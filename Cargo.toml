@@ -1,0 +1,22 @@
+[package]
+name = "exosphere"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "*", features = ["dynamic_linking", "trace", "multi-threaded"] }
+warp = "*"
+tokio = { version = "*", features = ["full"] }
+tokio-macros = { version = "0.2.0-alpha.6" }
+futures-util = "*"
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+derive_macro = { path = "derive-macro/" }
+
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+opt-level = 1 # Switch to 1 for more runtime performance
+# overflow-checks = false # Uncomment for better math performance
+
+[profile.dev.package."*"]
+opt-level = 2

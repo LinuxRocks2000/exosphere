@@ -1,0 +1,116 @@
+// parse a protocol frame into a javascript object, and vice versa
+
+/*
+    each type must be in the format
+    "typename": {
+        encode(data, position, bytes) {
+            // write data into bytes starting at position, using data as the javascript equivalent of this datatype (so number for any uX or iX or fX, strings for String)
+        },
+        decode(position, bytes) { 
+            // decode from bytes at position and return a javascript equivalent of this datatype (must be feedable back into encode)
+        },
+        size(me) {
+            // return the encoded size of an object
+        }
+
+        // bytes should always be a DataView of a Uint8Array
+    }
+*/
+
+const PROTOCOL_TYPES = {
+    'String': {
+        encode(data, position, bytes) {
+            var view = new TextEncoder().encode(data);
+            bytes.setUint16(position, view.byteLength, true);
+            for (var x = 0; x < view.length; x++) {
+                bytes.setUint8(position + 2 + x, view[x]);
+            }
+        },
+        decode(position, bytes) {
+            var len = bytes.getUint16(position, true);
+            var buffer = new Uint8Array(len);
+            for (var x = 0; x < len; x ++) {
+                buffer[x] = bytes.getUint8(position + 2 + x);
+            }
+            return new TextDecoder().decode(buffer);
+        },
+        size(me) {
+            return 2 + new TextEncoder().encode(me).length; // todo: make this more efficient
+        }
+    },
+    'u16': {
+        encode(data, position, bytes) {
+            bytes.setUint16(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getUint16(position, true);
+        },
+        size() {
+            return 2;
+        }
+    },
+    'f32': {
+        encode(data, position, bytes) {
+            bytes.setFloat32(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getFloat32(position, true);
+        },
+        size() {
+            return 4;
+        }
+    }
+};
+
+const INCOMING_PROTOCOL = [
+    {
+        name: "Test",
+        layout: [
+            'String',
+            'u16',
+            'f32'
+        ]
+    }
+];
+
+const OUTGOING_PROTOCOL = [
+    {
+        name: "Test",
+        layout: [
+            'String',
+            'u16',
+            'f32'
+        ]
+    }
+];
+
+function protocolDecode(message, typeset = PROTOCOL_TYPES, protocolset = INCOMING_PROTOCOL) { // returns an array. first element is the message name (like "Test"). next elements are the message content, in order.
+    var view = new DataView(message.buffer);
+    var position = 1;
+    var pItem = protocolset[view.getUint8(0)];
+    var ret = [pItem.name];
+    pItem.layout.forEach(type => {
+        var data = typeset[type].decode(position, view);
+        position += typeset[type].size(data); // todo: make this less bad
+        ret.push(data);
+    });
+    return ret;
+}
+
+function protocolEncode(message, typeset = PROTOCOL_TYPES, protocolset = OUTGOING_PROTOCOL) { // takes an array formatted like the return of protocolDecode and returns an ArrayBuffer
+    var pItemInd = protocolset.findIndex(p => p.name == message[0]);
+    var pItem = protocolset[pItemInd];
+    var size = 1;
+    for (var x = 0; x < message.length - 1; x++) {
+        size += typeset[pItem.layout[x]].size(message[x + 1]);
+    }
+    var ret = new Uint8Array(size);
+    var view = new DataView(ret.buffer);
+    view.setUint8(0, pItemInd);
+    var position = 1;
+    for (var x = 0; x < message.length - 1; x++) {
+        typeset[pItem.layout[x]].encode(message[x + 1], position, view);
+        position += typeset[pItem.layout[x]].size(message[x + 1]);
+    }
+    return ret.buffer;
+}
