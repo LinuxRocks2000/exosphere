@@ -50,6 +50,17 @@ const PROTOCOL_TYPES = {
             return 2 + new TextEncoder().encode(me).length; // todo: make this more efficient
         }
     },
+    'u8': {
+        encode(data, position, bytes) {
+            bytes.setUint8(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getUint8(position, true);
+        },
+        size() {
+            return 1;
+        }  
+    },
     'u16': {
         encode(data, position, bytes) {
             bytes.setUint16(position, data, true);
@@ -59,6 +70,72 @@ const PROTOCOL_TYPES = {
         },
         size() {
             return 2;
+        }
+    },
+    'u32': {
+        encode(data, position, bytes) {
+            bytes.setUint32(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getUint32(position, true);
+        },
+        size() {
+            return 4;
+        }
+    },
+    'u64': {
+        encode(data, position, bytes) {
+            bytes.setBigUint64(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getBigUint64(position, true);
+        },
+        size() {
+            return 8;
+        }
+    },
+    'i8': {
+        encode(data, position, bytes) {
+            bytes.setInt8(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getInt8(position, true);
+        },
+        size() {
+            return 1;
+        }
+    },
+    'i16': {
+        encode(data, position, bytes) {
+            bytes.setInt16(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getInt16(position, true);
+        },
+        size() {
+            return 2;
+        }
+    },
+    'i32': {
+        encode(data, position, bytes) {
+            bytes.setInt32(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getInt32(position, true);
+        },
+        size() {
+            return 4;
+        }
+    },
+    'i64': {
+        encode(data, position, bytes) {
+            bytes.setBigInt64(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getBigInt64(position, true);
+        },
+        size() {
+            return 8;
         }
     },
     'f32': {
@@ -71,6 +148,17 @@ const PROTOCOL_TYPES = {
         size() {
             return 4;
         }
+    },
+    'f64': {
+        encode(data, position, bytes) {
+            bytes.setFloat64(position, data, true);
+        },
+        decode(position, bytes) {
+            return bytes.getFloat64(position, true);
+        },
+        size() {
+            return 8;
+        }
     }
 };
 
@@ -79,8 +167,40 @@ const INCOMING_PROTOCOL = [
         name: "Test",
         layout: [
             'String',
+            'u8',
             'u16',
+            'u32',
+            'u64',
+            'i8',
+            'i16',
+            'i32',
+            'i64',
+            'f32',
+            'f64',
+            'u8'
+        ]
+    },
+    {
+        name: "GameState",
+        layout: [
+            'u8',
+            'u16',
+            'u16'
+        ]
+    },
+    {
+        name: "Metadata",
+        layout: [
+            'f32',
             'f32'
+        ]
+    },
+    {
+        name: "ObjectCreate",
+        layout: [
+            'f32',
+            'f32',
+            'u16'
         ]
     }
 ];
@@ -90,8 +210,24 @@ const OUTGOING_PROTOCOL = [
         name: "Test",
         layout: [
             'String',
+            'u8',
             'u16',
-            'f32'
+            'u32',
+            'u64',
+            'i8',
+            'i16',
+            'i32',
+            'i64',
+            'f32',
+            'f64',
+            'u8'
+        ]
+    },
+    {
+        name: "Connect",
+        layout: [
+            'String',
+            'String'
         ]
     }
 ];

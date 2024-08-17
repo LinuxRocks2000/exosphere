@@ -28,21 +28,57 @@ const FRAME_TIME : std::time::Duration = std::time::Duration::from_millis(1000 /
 
 const MAX_FRAME_SIZE : usize = 1024; // maximum size of an incoming websocket frame
 
-#[derive(Debug, ProtocolRoot)]
+const VERSION : u8 = 0; // bump this up every time a major change is made
+
+#[derive(Debug, ProtocolRoot, PartialEq)]
 enum ClientMessage {
-    Test(String, u16, f32)
+    Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8),
+    Connect(String, String), // connect with your nickname and the password respectively. doesn't let you place your castle yet.
+    // passwords are, like in MMOSG, used for various things: they can grant entry into a server, they can assign your team, etc. In io games they are usually ignored.
 }
 
 
 #[derive(Debug, ProtocolRoot, Clone)]
 enum ServerMessage {
-    Test(String, u16, f32)
+    Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8),
+    GameState(u8, u16, u16), // game state, stage tick, stage total time
+    // this is just 5 bytes - quite acceptable to send to every client every frame
+    // the first byte is bitbanged. bit 1 is io mode enable - in io mode, anyone can place a castle at any time. bit 2 is waiting/playing: in wait mode,
+    // castles can be placed, and the gameserver begins the game when >2 castles have been waiting for a certain duration.
+    // wait mode does not exist in io mode; if bits 1 and 2 are set, something's wrong. Bit 3 controls if the mode is "move ships" or "play" - in
+    // "move ships" mode, people can set and modify the paths their ships will follow, and in play mode the ships will move along those paths.
+    // In play mode, castles that wish to do so may also "possess" a ship, controlling its motion in real time; this is the replacement for MMOSG's RTFs.
+    // Bits 4-8 are reserved.
+    Metadata(f32, f32), // send whatever data (currently just board size, width x height) the client needs to begin rendering the gameboard
+    // this also tells the client that it was accepted (e.g. got the right password); getting the password _wrong_ would abort the connection
+    ObjectCreate(f32, f32, u16) // x, y, type: inform the client of an object of type centered on x,y.
 }
+
+
+// upon connecting, the server immediately sends the client Test("EXOSPHERE", 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION)
+// if the client can successfully decode the message, and VERSION matches the client version, the game may proceed. Otherwise, the client will immediately drop the connection.
+// to signify that the test passed, the client will send a Test() with the same values and the client version. If the server can successfully decode them, and the version the
+// client sends matches VERSION, the game may proceed. Otherwise, the server will abort the connection.
+// this exchange prevents old, underprepared, or incompatible clients from connecting to a game.
+// If a client attempts to do anything before protocol verification, it will be kicked off the server.
 
 
 struct Client {
     id : u64,
     channel : tokio::sync::mpsc::Sender<ServerMessage>
+}
+
+
+struct GameConfig {
+    width : f32,
+    height : f32
+}
+
+
+impl Client {
+    fn send(&mut self, msg : ServerMessage) {
+        let _ = self.channel.send(msg); // ignore errors on the channel; disconnect will be detected by the network thread later
+    }
 }
 
 
@@ -53,14 +89,13 @@ enum Comms {
 }
 
 
-fn tick(mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>) {
+fn tick(config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>) {
     loop { // loops receiver.try_recv(), until it returns empty
         match receiver.try_recv() {
             Ok(message) => {
                 match message {
                     Comms::ClientConnect(cli) => {
-                        broadcast.send(ServerMessage::Test("hi everybody! we have a new client!".to_string(), 0, 1.0)).expect("critical channel failure: broken connection to webserver");
-                        cli.channel.try_send(ServerMessage::Test("hello, client".to_string(), 1024, 420.69)).unwrap();
+                        cli.send(ServerMessage::Metadata(config.width, config.height));
                         clients.insert(cli.id, cli);
                     },
                     Comms::ClientDisconnect(id) => {
@@ -119,12 +154,13 @@ async fn main() {
                 drop(topid);
                 let (mut client_tx, mut client_rx) = client.split();
                 let (from_bevy_tx, mut from_bevy_rx) = tokio::sync::mpsc::channel(10);
-                let cl = Client {
+                let mut me_verified = false;
+                let mut cl = Some(Client {
                     id : my_id,
                     channel : from_bevy_tx
-                };
-                if let Err(_) = to_bevy.send(Comms::ClientConnect(cl)).await {
-                    println!("channel failure 1: lost connection to game engine");
+                });
+                if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode())).await {
+                    println!("client disconnected before handshake");
                     return;
                 }
                 'cli_loop: loop {
@@ -135,9 +171,25 @@ async fn main() {
                                     if let Ok(msg) = msg {
                                         if msg.is_binary() {
                                             if let Ok(frame) = ClientMessage::decode_from(&msg.as_bytes()) {
-                                                if let Err(_) = to_bevy.send(Comms::MessageFrom(my_id, frame)).await {
-                                                    println!("channel failure 1.125: lost connection to game engine");
-                                                    break 'cli_loop;
+                                                if me_verified {
+                                                    if let Err(_) = to_bevy.send(Comms::MessageFrom(my_id, frame)).await {
+                                                        println!("channel failure 1: lost connection to game engine");
+                                                        break 'cli_loop;
+                                                    }
+                                                }
+                                                else {
+                                                    if frame == ClientMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION) {
+                                                        let cl_out = cl.take().expect("fatal: apparent reuse of client (this code path should NEVER be called!)");
+                                                        if let Err(_) = to_bevy.send(Comms::ClientConnect(cl_out)).await {
+                                                            println!("channel failure 1.125: lost connection to game engine");
+                                                            break 'cli_loop;
+                                                        }
+                                                        me_verified = true;
+                                                    }
+                                                    else {
+                                                        println!("client failed verification");
+                                                        break 'cli_loop;
+                                                    }
                                                 }
                                             }
                                             else {
@@ -152,8 +204,14 @@ async fn main() {
                                     }
                                 }
                                 None => {
-                                    if let Err(_) = to_bevy.send(Comms::ClientDisconnect(my_id)).await {
-                                        println!("channel failure 3: lost connection to game engine");
+                                    if me_verified {
+                                        if let Err(_) = to_bevy.send(Comms::ClientDisconnect(my_id)).await {
+                                            println!("channel failure 3: lost connection to game engine");
+                                        }
+                                    }
+                                    else {
+                                        println!("client disconnect before completion of handshake");
+                                        break 'cli_loop;
                                     }
                                     break 'cli_loop;
                                 }
@@ -196,6 +254,10 @@ async fn main() {
         .insert_resource(ClientMap(HashMap::new()))
         .insert_resource(Receiver(to_bevy_rx))
         .insert_resource(Sender(from_bevy_broadcast_tx))
+        .insert_resource(GameConfig {
+            width: 1000.0,
+            height: 1000.0
+        })
         .add_systems(Update, tick)
         .set_runner(|mut app| {
             loop {

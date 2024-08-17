@@ -9,3 +9,35 @@
 
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
 */
+
+body > * {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    width: 100vw;
+    height: 100vh;
+    box-sizing: border-box;
+}
+
+* {
+    margin: 0px;
+    padding: 0px;
+    font-family: monospace;
+}
+
+#loginmenu {
+    padding: 50px;
+    border-radius: 50px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: inline-block;
+}
+
+#waitscreen {
+    background-color: black;
+    color: white;
+    text-align: center;
+    padding: 100px;
+}

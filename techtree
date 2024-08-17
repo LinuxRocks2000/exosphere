@@ -1,0 +1,59 @@
+this is the initially planned tech/upgrade tree.
+"tech" is just manufacturing capabilities on the fabber bays. each fabber bay can be upgraded to provide more powers. your initial castle has the most powerful fabber bay
+which can build anything; your forts, outposts, and farms have weaker fabber bays. The things that you can make are in this tree:
+
+[Missiles] Characterized by moving fast and uncoordinatedly, usually as kinetic weapons but sometimes with an explosive payload. They do not fire bullets. $700/level.
+* Kinetic Missile <base type>: upgraded bullet, basically. Follows a course until it hits something, and does impact damage to it. $5. Level 1.
+* Seeking Missile: missile that follows a course until it notices an enemy ship in range, which it peels off and kinetic-strikes. $10. Level 1.
+* Hypersonic Missile: missile with a small explosive payload. Detonates on impact. $20. Level 2.
+* Plasma Rocket: missile that fires a short-range laser out the front, allowing it to drill through rubble and do extra damage to things it hits. $25. Level 3.
+* Cruise Missile: Larger, slower hypersonic missile with a larger explosion radius. $50. Level 4.
+
+[Ships] Ships move slower than missiles but are more coordinated. They fire bullets intermittently. $600/level.
+* Fighter <base type>: Small, somewhat-slow ship that fires one minor bullet per 30 play ticks. $10. Level 1.
+* Tie Fighter: Larger ship that moves at the same speed as a Fighter. Has a repeater weapon - fires minor bullets in a 25-5 repeater pattern. $20. Level 1.
+* Sniper: Small, fast ship that fires one long-range bullet every 120 ticks. $30. Level 1.
+* Gunship: Small ship at the same speed as a Fighter. Fires minor bullets in a 25-5 repeater pattern, but aimed with the turret algorithm. Will not fire
+    without enemies in range; will friendly-fire. $60. Level 2.
+* Demolition Cruiser: Large, slow ship that fires a huge, long-range explosive bullet every 120 ticks. $60. Level 2.
+
+[Economic] "Farm tools". $50/level.
+* Seed: grows into a chest when inside a farm-field. $5. Level 1.
+* Farmhouse: Projects a "farm field" - a 200 unit radius that matures seeds into chests. Actually a building, but more convenient under this category. $70. Level 2.
+* Scrap ship: Not technically a ship as it does not fire bullets. Uses a laser to mine nearby chests, but will not fire if the laser would hit a friendly. $20. Level 2.
+
+[Defense] Defensive pieces are designed to prevent enemies from succesfully infiltrating your territory. Most defenses are closer to buildings than to ships,
+            but they're small and simple and can be placed by a fabber. $200/level.
+* Laser Node: Laser nodes near each other fire high-energy lasers between them, creating a nearly impassible gate. Large swarms can effectively overwhelm them, though.
+                Laser nodes also fire lasers with a very short range at enemy objects near them, making them difficult to fight with bullets (although explosives
+                are still effective). $20 each. Level 1.
+* Basic Turret: Aims with the low-fidelity turret algorithm (can hit slow-moving or large objects), fires a minor bullet every 20 play ticks. $50. Level 1.
+* Laser Node Long Range: Three times the range of a usual laser node. Useful for covering holes without providing a weak point. Will connect at short range to normal laser nodes.
+                          $80. Level 2.
+* Smart Turret: Aims with the high-fidelity turret algorithm and fires a minor bullet every 20 play ticks. $100. Level 2.
+* Blast Turret: Aims with the high-fidelity turret algorithm and fires an explosive bullet every 30 play ticks. $150. Level 3.
+* Laser Turret: Fires a high-energy laser into any nearby enemy piece. $250. Level 3.
+
+[Buildings] Buildings are complex structures that are difficult or impossible to shift out of position. They can't be built by a fabber; they have to be
+                fabbed by a specialized constructor ship. $800/level.
+**** Constructor Ships are "ships" that follow a course until (at any time during play or move ships) the player orders construction to begin, in which case they are
+    fixed and vulnerable for 1800 play-ticks (a standard play period is 40 seconds, or 1200 play-ticks). At the end of that period, they are fully deleted and the
+    object they were constructing is put in their place. Pure constructor ships cannot be placed by the player; they have to place one of the variants below. ****
+* Outpost Constructor: Constructor ship that yields an outpost. Outposts are the weakest building - they provide a Small-M0S0E2D1B0 fabber, and nothing else
+                        (like any other fabber, outpost fabbers can be upgraded, but it ain't cheap). $300. Level 1.
+* Teleportal Constructor: Constructor ship that places a teleportal pair. Teleportal pairs instantly transport materiel over long distances. The constructor ship has to be
+                            moved to the *first* teleportal location, constructed (which takes half the time of normal constructor ship operation), and then constructed at
+                            the second location. Enemy ships can also use teleportals, so defenses are necessary: outposts are good for this. $600. Level 1.
+* Fort Constructor: Yields a fort, which starts with a Medium-M2S1E2D2B1 fabber. $800. Level 2.
+* Castle Constructor: Yields a castle, which starts with a Large-M4S2E2D3B2 fabber. $3000. Level 3.
+
+
+Fabber levels decide what sections on the tech tree a fabber can build. Each fabber has a constant range and a level for each branch on the tree. All values can be upgraded.
+A fabber can fab or repair a piece if the level of the piece is equal to or less than the fabber level in that tech line; upgrades to the pieces do not change their level.
+Fabber levels cost a constant for each tech line times the level. For instance, missiles, which are very high-yield weapons, require more expensive fabbers at $700 a level,
+but economic fabber upgrades only costs $50 a level. Fabber specifications are represented as a size (one of [Large, Medium, Small]) and initials + level for each tech
+section. For instance, outposts have a Small-M0S0E2D1B0 fabber by default.
+
+Aside from providing better fabbers, castles and forts and outposts produce *territory*. The only effect this produces is subtle: non-allied territories can never overlap.
+This means that expansion is bottlenecked; you eventually have to destroy enemy bases to take more territory. Castles produce significantly more territory than forts,
+and outposts do not produce territory. It is possible to place in enemy territory if you have a fabber that extends into it.
