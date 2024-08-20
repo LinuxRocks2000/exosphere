@@ -10,7 +10,11 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
 */
 
+// biiiiiiiiiiiiiiiiiiiiiiiiiiiiig TODO: split this up into a bunch of different files because JEEZ this is unreadable garbage
+
 use bevy::prelude::*;
+use bevy_rapier2d::prelude::*;
+use bevy_rapier2d::rapier::na::Vector;
 use warp::Filter;
 use futures_util::{StreamExt, SinkExt};
 use tokio::sync::{Mutex, mpsc, broadcast};
@@ -29,6 +33,8 @@ const FRAME_TIME : std::time::Duration = std::time::Duration::from_millis(1000 /
 const MAX_FRAME_SIZE : usize = 1024; // maximum size of an incoming websocket frame
 
 const VERSION : u8 = 0; // bump this up every time a major change is made
+
+const BASIC_FIGHTER_TYPE_NUM : u16 = 0;
 
 #[derive(Debug, ProtocolRoot, PartialEq)]
 enum ClientMessage {
@@ -49,9 +55,10 @@ enum ServerMessage {
     // "move ships" mode, people can set and modify the paths their ships will follow, and in play mode the ships will move along those paths.
     // In play mode, castles that wish to do so may also "possess" a ship, controlling its motion in real time; this is the replacement for MMOSG's RTFs.
     // Bits 4-8 are reserved.
-    Metadata(f32, f32), // send whatever data (currently just board size, width x height) the client needs to begin rendering the gameboard
+    Metadata(u64, f32, f32), // send whatever data (currently just id and board size, width x height) the client needs to begin rendering the gameboard
     // this also tells the client that it was accepted (e.g. got the right password); getting the password _wrong_ would abort the connection
-    ObjectCreate(f32, f32, u16) // x, y, type: inform the client of an object of type centered on x,y.
+    ObjectCreate(f32, f32, f32, u64, u32, u16), // x, y, a, owner, id, type: inform the client of an object.
+    ObjectMove(u32, f32, f32, f32) // id, x, y, a
 }
 
 
@@ -69,6 +76,7 @@ struct Client {
 }
 
 
+#[derive(Resource)]
 struct GameConfig {
     width : f32,
     height : f32
@@ -77,7 +85,9 @@ struct GameConfig {
 
 impl Client {
     fn send(&mut self, msg : ServerMessage) {
-        let _ = self.channel.send(msg); // ignore errors on the channel; disconnect will be detected by the network thread later
+        if let Err(_) = self.channel.try_send(msg) {
+            println!("failed to send message on channel");
+        }
     }
 }
 
@@ -89,20 +99,93 @@ enum Comms {
 }
 
 
-fn tick(config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>) {
+#[derive(Component)]
+struct GamePiece {
+    type_indicator : u16, // the type indicator sent to the client
+    // assigned by the gamepiece builder functions
+    // todo: do this a better way
+    owner : u64, // entry in the Clients hashmap
+    last_update_pos : Vec2
+}
+
+
+impl GamePiece {
+    fn new(type_indicator : u16, owner : u64) -> Self {
+        Self {
+            type_indicator,
+            owner,
+            last_update_pos : Vec2 {
+                x : 0.0,
+                y : 0.0
+            }
+        }
+    }
+}
+
+
+enum Bullets {
+    MinorBullet(f32) // simple bullet with range
+}
+
+#[derive(Component)]
+struct Gun {
+    enabled : bool,
+    cd : u16, // cooldown ticks between shots
+    bullets : Bullets,
+    repeats : u16, // number of repeater shots
+    repeat_cd : u16, // time between repeater shots
+    // state fields (don't touch):
+    r_point : u16, // current repeater position
+    tick : u16 // current tick
+}
+
+
+enum PathNode {
+    StraightTo(f32, f32)
+    // todo: teleportal
+}
+
+
+#[derive(Component)]
+struct PathFollower { // follow a path.
+
+}
+
+
+#[derive(Event)]
+struct NewClientEvent {
+    id : u64
+}
+
+
+fn client_tick(mut commands : Commands, mut ev_newclient : EventWriter<NewClientEvent>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>) {
+    // manage events from network-connected clients
     loop { // loops receiver.try_recv(), until it returns empty
         match receiver.try_recv() {
             Ok(message) => {
                 match message {
-                    Comms::ClientConnect(cli) => {
-                        cli.send(ServerMessage::Metadata(config.width, config.height));
+                    Comms::ClientConnect(mut cli) => {
+                        make_basic_fighter(&mut commands, &broadcast, cli.id, 50.0, 50.0, 0.0);
                         clients.insert(cli.id, cli);
                     },
                     Comms::ClientDisconnect(id) => {
                         clients.remove(&id);
                     },
                     Comms::MessageFrom(id, msg) => {
-                        println!("client {} sent message {:?}", id, msg);
+                        if let Some(client) = clients.get_mut(&id) {
+                            match msg {
+                                ClientMessage::Connect(banner, password) => {
+                                    client.send(ServerMessage::Metadata(id, config.width, config.height));
+                                    ev_newclient.send(NewClientEvent {id});
+                                },
+                                _ => {
+                                    panic!("unreachable code path");
+                                }
+                            }
+                        }
+                        else {
+                            println!("error: received message from client {}, which does not exist", id);
+                        }
                     }
                 }
             },
@@ -114,7 +197,62 @@ fn tick(config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver 
             }
         }
     }
-    // do other stuff down here
+}
+
+fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform)>) {
+    for ev in events.read() {
+        if let Some(client) = clients.get_mut(&ev.id) {
+            for (entity, piece, transform) in objects.iter() {
+                client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_axis_angle().1, piece.owner, entity.index(), piece.type_indicator));
+            }
+        }
+    }
+}
+
+fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &Velocity, &mut GamePiece, &Transform)>) {
+    for (entity, velocity, mut piece, transform) in objects.iter_mut() {
+        // todo: only send position updates if it's moving
+        let pos = transform.translation.truncate();
+        if (pos - piece.last_update_pos).length() > 1.0 {
+            let _ = broadcast.send(ServerMessage::ObjectMove( // ignore the errors
+                entity.index(),
+                pos.x,
+                pos.y,
+                transform.rotation.to_axis_angle().1
+            ));
+            piece.last_update_pos = pos;
+        }
+    }
+}
+
+fn frame_broadcast(broadcast : ResMut<Sender>) { // TODO: actually count ticks
+    let _ = broadcast.send(ServerMessage::GameState (0, 0, 0));
+}
+
+fn apply_force(mut objects : Query<&mut ExternalForce>) {
+    for mut force in objects.iter_mut() {
+        force.force.x = 2000.0;
+    }
+}
+
+fn make_basic_fighter(commands : &mut Commands, broadcast : &ResMut<Sender>, owner : u64, x : f32, y : f32, a : f32) {
+    let mut transform = Transform::from_xyz(x, y, 0.0);
+    transform.rotate_z(a);
+    let ship = commands.spawn((RigidBody::Dynamic, Velocity::default(), Collider::cuboid(20.5, 20.5),
+                    TransformBundle::from(transform),
+                    GamePiece::new(BASIC_FIGHTER_TYPE_NUM, owner),
+                    ExternalForce {
+                        force: Vec2::new(2000.0, 0.0),
+                        torque: 0.0
+                    },
+                    Damping {
+                        linear_damping: 0.0,
+                        angular_damping: 0.0,
+                    }));
+    let _ = broadcast.send(ServerMessage::ObjectCreate(x, y, a, owner, ship.id().index(), BASIC_FIGHTER_TYPE_NUM));
+}
+
+fn setup(mut commands : Commands) {
 }
 
 #[derive(Resource, Deref, DerefMut)]
@@ -130,10 +268,10 @@ struct Sender(broadcast::Sender<ServerMessage>);
 
 #[tokio::main]
 async fn main() {
-    let top_id = Arc::new(Mutex::new(0_u64)); // POSSIBLE BUG: if the client id goes beyond 18,446,744,073,709,551,615, it may overflow and assign duplicate IDs
+    let top_id = Arc::new(Mutex::new(1_u64)); // POSSIBLE BUG: if the client id goes beyond 18,446,744,073,709,551,615, it may overflow and assign duplicate IDs
     // this is not likely to be a real problem
-    let (to_bevy_tx, to_bevy_rx) = mpsc::channel::<Comms>(32);
-    let (from_bevy_broadcast_tx, _) = broadcast::channel::<ServerMessage>(32);
+    let (to_bevy_tx, to_bevy_rx) = mpsc::channel::<Comms>(128);
+    let (from_bevy_broadcast_tx, _) = broadcast::channel::<ServerMessage>(128);
     let bevy_broadcast_tx_cloner = from_bevy_broadcast_tx.clone();
     let websocket = warp::path("game")
         .and(warp::ws())
@@ -250,15 +388,22 @@ async fn main() {
             })
         });
     tokio::task::spawn(warp::serve(websocket).run(([0,0,0,0], 3000)));
+    let mut config = RapierConfiguration::new(100.0);
+    config.gravity = Vec2 { x : 0.0, y : 0.0 };
     App::new()
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0)) // todo: figure out how pixels_per_meter actually affects anything
+        .add_event::<NewClientEvent>()
+        .insert_resource(config)
         .insert_resource(ClientMap(HashMap::new()))
+        .add_plugins(bevy_time::TimePlugin)
         .insert_resource(Receiver(to_bevy_rx))
         .insert_resource(Sender(from_bevy_broadcast_tx))
         .insert_resource(GameConfig {
             width: 1000.0,
             height: 1000.0
         })
-        .add_systems(Update, tick)
+        .add_systems(Update, (client_tick, send_objects, position_updates.before(frame_broadcast), frame_broadcast, apply_force))
+        .add_systems(Startup, setup)
         .set_runner(|mut app| {
             loop {
                 let start = std::time::Instant::now();

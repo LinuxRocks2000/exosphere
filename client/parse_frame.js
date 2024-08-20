@@ -191,6 +191,7 @@ const INCOMING_PROTOCOL = [
     {
         name: "Metadata",
         layout: [
+            'u64',
             'f32',
             'f32'
         ]
@@ -200,7 +201,19 @@ const INCOMING_PROTOCOL = [
         layout: [
             'f32',
             'f32',
+            'f32',
+            'u64',
+            'u32',
             'u16'
+        ]
+    },
+    {
+        name: "ObjectMove",
+        layout: [
+            'u32',
+            'f32',
+            'f32',
+            'f32'
         ]
     }
 ];

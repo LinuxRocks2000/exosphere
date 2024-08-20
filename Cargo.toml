@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "*", features = ["dynamic_linking", "trace", "multi-threaded"] }
+bevy = { version = "0.14.0", features = ["dynamic_linking", "trace"] }
 warp = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-macros = { version = "0.2.0-alpha.6" }
 futures-util = "*"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 derive_macro = { path = "derive-macro/" }
+bevy_rapier2d = { version = "*" }
+bevy_time = "*"
 
 [profile.dev]
 debug = 0
