@@ -20,6 +20,7 @@ use futures_util::{StreamExt, SinkExt};
 use tokio::sync::{Mutex, mpsc, broadcast};
 use std::sync::Arc;
 use std::collections::HashMap;
+use bevy::ecs::schedule::ScheduleLabel;
 
 pub mod protocol;
 use protocol::Protocol;
@@ -48,17 +49,17 @@ enum ClientMessage {
 enum ServerMessage {
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8),
     GameState(u8, u16, u16), // game state, stage tick, stage total time
-    // this is just 5 bytes - quite acceptable to send to every client every frame
-    // the first byte is bitbanged. bit 1 is io mode enable - in io mode, anyone can place a castle at any time. bit 2 is waiting/playing: in wait mode,
-    // castles can be placed, and the gameserver begins the game when >2 castles have been waiting for a certain duration.
-    // wait mode does not exist in io mode; if bits 1 and 2 are set, something's wrong. Bit 3 controls if the mode is "move ships" or "play" - in
+    // this is just 5 bytes - quite acceptable to send to every client every frame, much lower overhead than even ObjectMove.
+    // the first byte is bitbanged. bit 1 is io mode enable - in io mode, anyone can place a castle at any time. bit 2 is waiting/playing (1 = playing, 0 = waiting): in wait mode,
+    // castles can be placed, and the gameserver begins the game when >=2 castles have been waiting for a certain duration.
+    // wait mode does not exist in io mode; if bits 1 and 2 are set, something's wrong. Bit 3 controls if the mode is "move ships" (1) or "play" (0) - in
     // "move ships" mode, people can set and modify the paths their ships will follow, and in play mode the ships will move along those paths.
     // In play mode, castles that wish to do so may also "possess" a ship, controlling its motion in real time; this is the replacement for MMOSG's RTFs.
     // Bits 4-8 are reserved.
     Metadata(u64, f32, f32), // send whatever data (currently just id and board size, width x height) the client needs to begin rendering the gameboard
     // this also tells the client that it was accepted (e.g. got the right password); getting the password _wrong_ would abort the connection
     ObjectCreate(f32, f32, f32, u64, u32, u16), // x, y, a, owner, id, type: inform the client of an object.
-    ObjectMove(u32, f32, f32, f32) // id, x, y, a
+    ObjectMove(u32, f32, f32, f32), // id, x, y, a
 }
 
 
@@ -79,7 +80,27 @@ struct Client {
 #[derive(Resource)]
 struct GameConfig {
     width : f32,
-    height : f32
+    height : f32,
+    wait_period : u16, // time it waits before the game starts
+    play_period : u16, // length of a play period
+    strategy_period : u16, // length of a strategy period
+}
+
+
+#[derive(Resource)]
+struct GameState {
+    playing : bool,
+    io : bool,
+    strategy : bool,
+    tick : u16,
+    time_in_stage : u16
+}
+
+
+impl GameState {
+    fn get_state_byte(&self) -> u8 { // todo: 
+        self.io as u8 * 128 + self.playing as u8 * 64 + self.strategy as u8 * 32
+    }
 }
 
 
@@ -213,7 +234,9 @@ fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &Ve
     for (entity, velocity, mut piece, transform) in objects.iter_mut() {
         // todo: only send position updates if it's moving
         let pos = transform.translation.truncate();
+        // updates on position
         if (pos - piece.last_update_pos).length() > 1.0 {
+            // are basically straight lines.
             let _ = broadcast.send(ServerMessage::ObjectMove( // ignore the errors
                 entity.index(),
                 pos.x,
@@ -221,18 +244,48 @@ fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &Ve
                 transform.rotation.to_axis_angle().1
             ));
             piece.last_update_pos = pos;
+        }/*
+        if (velocity.linvel - piece.last_update_vel).length() > 0.1 {
+            let _ = broadcast.send(ServerMessage::ObjectTrajectoryUpdate( // ignore the errors
+                entity.index(),
+                pos.x,
+                pos.y,
+                transform.rotation.to_axis_angle().1,
+                velocity.linvel.x,
+                velocity.linvel.y,
+                velocity.angvel
+            ));
+            piece.last_update_vel = velocity.linvel;
+        }*/
+    }
+}
+
+fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, config : Res<GameConfig>, clients : Res<ClientMap>) {
+    if state.playing {
+        state.tick += 1;
+        if state.tick > state.time_in_stage {
+            state.strategy = !state.strategy;
+            if state.strategy {
+                state.time_in_stage = config.strategy_period;
+            }
+            else {
+                state.time_in_stage = config.play_period;
+            }
+            state.tick = 0;
         }
     }
-}
-
-fn frame_broadcast(broadcast : ResMut<Sender>) { // TODO: actually count ticks
-    let _ = broadcast.send(ServerMessage::GameState (0, 0, 0));
-}
-
-fn apply_force(mut objects : Query<&mut ExternalForce>) {
-    for mut force in objects.iter_mut() {
-        force.force.x = 2000.0;
+    else {
+        if clients.keys().len() > 1 {
+            state.tick += 1;
+        }
+        else {
+            state.tick = 0;
+        }
+        if state.tick > state.time_in_stage {
+            state.playing = true;
+        }
     }
+    let _ = broadcast.send(ServerMessage::GameState (state.get_state_byte(), state.tick, state.time_in_stage));
 }
 
 fn make_basic_fighter(commands : &mut Commands, broadcast : &ResMut<Sender>, owner : u64, x : f32, y : f32, a : f32) {
@@ -252,7 +305,9 @@ fn make_basic_fighter(commands : &mut Commands, broadcast : &ResMut<Sender>, own
     let _ = broadcast.send(ServerMessage::ObjectCreate(x, y, a, owner, ship.id().index(), BASIC_FIGHTER_TYPE_NUM));
 }
 
-fn setup(mut commands : Commands) {
+fn setup(mut commands : Commands, mut state : ResMut<GameState>, config : Res<GameConfig>) {
+    state.tick = 0;
+    state.time_in_stage = config.wait_period;
 }
 
 #[derive(Resource, Deref, DerefMut)]
@@ -264,6 +319,19 @@ struct Receiver(mpsc::Receiver<Comms>);
 #[derive(Resource, Deref, DerefMut)]
 struct Sender(broadcast::Sender<ServerMessage>);
 
+
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PhysicsSchedule;
+
+
+use std::time::Duration;
+
+fn run_physics_schedule(world : &mut World) {
+    let state = world.get_resource::<GameState>().expect("gamestate resource not loaded!");
+    if state.playing && !state.strategy {
+        world.run_schedule(PhysicsSchedule);
+    }
+}
 
 
 #[tokio::main]
@@ -391,7 +459,26 @@ async fn main() {
     let mut config = RapierConfiguration::new(100.0);
     config.gravity = Vec2 { x : 0.0, y : 0.0 };
     App::new()
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.0)) // todo: figure out how pixels_per_meter actually affects anything
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().with_default_system_setup(false))
+        .add_systems(
+            PhysicsSchedule,
+            (
+                RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::SyncBackend)
+                    .in_set(PhysicsSet::SyncBackend),
+                RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::StepSimulation)
+                    .in_set(PhysicsSet::StepSimulation),
+                RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::Writeback)
+                    .in_set(PhysicsSet::Writeback),
+            ),
+        )
+        .init_schedule(PhysicsSchedule)
+        .edit_schedule(PhysicsSchedule, |schedule| {
+            schedule.configure_sets((
+                PhysicsSet::SyncBackend,
+                PhysicsSet::StepSimulation,
+                PhysicsSet::Writeback
+            ).chain());
+        })
         .add_event::<NewClientEvent>()
         .insert_resource(config)
         .insert_resource(ClientMap(HashMap::new()))
@@ -400,9 +487,20 @@ async fn main() {
         .insert_resource(Sender(from_bevy_broadcast_tx))
         .insert_resource(GameConfig {
             width: 1000.0,
-            height: 1000.0
+            height: 1000.0,
+            wait_period: 10 * UPDATE_RATE as u16,
+            play_period: 10 * UPDATE_RATE as u16,
+            strategy_period: 10 * UPDATE_RATE as u16
         })
-        .add_systems(Update, (client_tick, send_objects, position_updates.before(frame_broadcast), frame_broadcast, apply_force))
+        .insert_resource(GameState {
+            playing : false,
+            io : false,
+            strategy : true,
+            tick : 0,
+            time_in_stage : 0
+        })
+        .add_systems(PreUpdate, run_physics_schedule)
+        .add_systems(Update, (client_tick, send_objects, position_updates.before(frame_broadcast), frame_broadcast))
         .add_systems(Startup, setup)
         .set_runner(|mut app| {
             loop {

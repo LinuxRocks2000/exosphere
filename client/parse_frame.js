@@ -215,6 +215,18 @@ const INCOMING_PROTOCOL = [
             'f32',
             'f32'
         ]
+    },
+    {
+        name: "ObjectTrajectoryUpdate",
+        layout: [
+            'u32',
+            'f32',
+            'f32',
+            'f32',
+            'f32',
+            'f32',
+            'f32'
+        ]
     }
 ];
 

@@ -34,6 +34,12 @@ var lastFrameTime = 0;
 var gameboardWidth = 0;
 var gameboardHeight = 0;
 
+var is_playing = false;
+var is_strategy = false;
+var is_io = false;
+var time_in_stage = 0;
+var time_so_far = 0;
+
 function onresize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -59,6 +65,8 @@ function mainloop() {
     var translateY = window.innerHeight / 2 - viewY;
     ctx.fillStyle = "#000022";
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.fillStyle = "white";
+    ctx.fillText(time_so_far + "/" + time_in_stage + " in " + (is_playing ? (is_strategy ? "strategy" : "play") : "wait") + "mode.", 30, 30);
     ctx.translate(translateX, translateY);
     ctx.strokeStyle = "#FFFFFF";
     ctx.lineWidth = 2;
@@ -142,8 +150,39 @@ function play() {
             p.a_n = a;
         }
     });
-    connection.onMessage("GameState", () => {
+    connection.onMessage("ObjectTrajectoryUpdate", (id, x, y, a, xv, yv, av) => {
+        let p = pieces[id];
+        if (p) {
+            p.x_o = x;
+            p.y_o = y;
+            p.a_o = a;
+            p.x_n = x + xv;
+            p.y_n = y + yv;
+            p.a_n = a + av;
+        }
+    });
+    connection.onMessage("GameState", (byte, tick, totalTime) => {
         lastFrameTime = window.performance.now();
+        time_in_stage = totalTime;
+        time_so_far = tick;
+        if (byte & 128) {
+            is_io = true;
+        }
+        else {
+            is_io = false;
+        }
+        if (byte & 64) {
+            is_playing = true;
+        }
+        else {
+            is_playing = false;
+        }
+        if (byte & 32) {
+            is_strategy = true;
+        }
+        else {
+            is_strategy = false;
+        }
     });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";
