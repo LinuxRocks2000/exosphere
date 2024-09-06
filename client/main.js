@@ -15,6 +15,10 @@
     Enemy: (255, 88, 0)
 */
 
+// why yes, this code *is* a mess, thanks for noticing
+// this is mostly thrown together to test the server
+// there will be overhauls in the future
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -26,6 +30,22 @@ const MS_PER_FRAME = 1000 / 30;
 
 var viewX = 0; // in world units, correspond to the center of the screen
 var viewY = 0;
+
+var rawMX = 0; // raw mouse x
+var rawMY = 0; // raw mouse y
+
+var keysDown = {};
+var mouseDown = false;
+
+var went_down_on = undefined;// the strategy node that we are now dragging
+
+var mouseX = 0; // in world units
+var mouseY = 0;
+
+var hovered = undefined; // current hovered thing
+var selected = undefined; // current selected thing
+
+var should_place_node = true; // should we place a strategy node when the pointer goes up? usually true, sets to false when you use a gesture (like dragging a point)
 
 var m_id = undefined;
 
@@ -39,6 +59,10 @@ var is_strategy = false;
 var is_io = false;
 var time_in_stage = 0;
 var time_so_far = 0;
+
+var has_placed_castle = false;
+
+var slot = 0;
 
 function onresize() {
     canvas.width = window.innerWidth;
@@ -60,7 +84,13 @@ var pieces = {}; // hash table of ids
 
 window.addEventListener("resize", onresize);
 
+function dot(v1, v2) {
+    return v1[0] * v2[0] + v1[1] * v2[1];
+}
+
 function mainloop() {
+    mouseX = viewX + rawMX - window.innerWidth / 2;
+    mouseY = viewY + rawMY - window.innerHeight / 2;
     var translateX = window.innerWidth / 2 - viewX; // in screen units, adjust the view so it is in fact centered on (viewX, viewY)
     var translateY = window.innerHeight / 2 - viewY;
     ctx.fillStyle = "#000022";
@@ -71,26 +101,199 @@ function mainloop() {
     ctx.strokeStyle = "#FFFFFF";
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, gameboardWidth, gameboardHeight);
-
     var delta = window.performance.now() - lastFrameTime;
-    console.log(delta);
     delta /= MS_PER_FRAME;
     var inv_delta = 1 - delta;
 
+    hovered = undefined;
     for (item of Object.values(pieces)) {
         var fString = item.owner == m_id ? "friendly" : "enemy";
+        var x = item.x_n * delta + item.x_o * inv_delta;
+        var y = item.y_n * delta + item.y_o * inv_delta;
+        var a = item.a_n * delta + item.a_o * inv_delta;
+        ctx.translate(x, y);
+        ctx.rotate(a);
         if (item.type == 0) {
-            ctx.drawImage(getRes("basic_fighter_" + fString), item.x_n * delta + item.x_o * inv_delta, item.y_n * delta + item.y_o * inv_delta);
+            ctx.drawImage(getRes("basic_fighter_" + fString), -41/2, -41/2);
+        }
+        else if (item.type == 1) {
+            ctx.drawImage(getRes("castle_" + fString), -30, -30);
+        }
+        ctx.rotate(-a);
+        ctx.translate(-x, -y);
+        if (canUpdateStrategy(item)) {
+            var lastPos = [x, y];
+            item.strategy.forEach(strat => {
+                // each strategy entry is either a vec2 [x, y] or a gamepiece. If a gamepiece, this object is
+                // a) in seeker mode
+                // b) going to travel through a teleportal
+                // the important semantics are in how the user interacts with it (you can't *move* the strategy post if it's on a gamepiece)
+                // and how the game engines simulate it (ships won't shoot while on direct approach to a teleportal, lest they destroy it and ruin their route)
+                // other gamepieces must be the end of a ship route *unless* they are a teleportal
+                if (Array.isArray(strat)) {
+                    ctx.beginPath();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = "blue";
+                    ctx.moveTo(lastPos[0], lastPos[1]);
+                    ctx.lineTo(strat[0], strat[1]);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.fillStyle = "blue";
+                    ctx.arc(strat[0], strat[1], 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    lastPos[0] = strat[0];
+                    lastPos[1] = strat[1];
+                }
+            });
+            var m_dx = mouseX - x;
+            var m_dy = mouseY - y;
+            if (m_dx * m_dx + m_dy * m_dy < 15 * 15) {
+                ctx.strokeStyle = "#FFFFFF";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(mouseX, mouseY, 8, 0, Math.PI * 2);
+                ctx.stroke();
+                hovered = item;
+            }
+            if (selected == item) {
+                ctx.strokeStyle = "rgb(0, 190, 255)";
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x - 40, y - 40, 80, 80);
+            }
         }
     }
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, 10, 0, Math.PI * 2);
+    ctx.stroke();
 
     ctx.translate(-translateX, -translateY);
     requestAnimationFrame(mainloop);
 }
 
+function canUpdateStrategy(obj) {
+    // return true if we have the actual ability to update the strategy for a given object
+    if (obj.owner != m_id) {
+        return false; // we can never move an object that isn't ours
+    }
+    return [0].indexOf(obj.type) != -1;
+}
+
 function play() {
+
+    // editing strategy nodes goes as such:
+    // 1. click the thing you want to edit
+    //   clicking anywhere will place a new node extending from the last one
+    //   dragging any already-placed point node will move it
+    //   holding "d" and clicking any node will delete it
+    //   clicking approximately on the line between any two nodes will insert a point node
+    //   holding "r" and clicking a point node will let you set an endcap rotation, IF it is the last node in the strategy
+    //   clicking "c" will clear the entire strategy
+
     var connection = new Connection(document.getElementById("server").value);
     var protocol = connection.load_protocol(OUTGOING_PROTOCOL);
+
+
+    window.addEventListener("pointerup", () => {
+        mouseDown = false;
+        if (slot == 0) { // past this point, spectators can't do anything
+            return;
+        }
+        if (has_placed_castle) {
+            if (hovered) {
+                selected = hovered;
+            }
+            else if (selected) {
+                var pointHovered_i = 0;
+                selected.strategy.forEach((node, i) => {
+                    if (Array.isArray(node)) {
+                        var dx = node[0] - mouseX;
+                        var dy = node[1] - mouseY;
+                        var d = dx * dx + dy * dy;
+                        if (d < 4 * 4) {
+                            pointHovered_i = i;
+                        }
+                    }
+                });
+                if (keysDown["d"]) {
+                    selected.strategy.splice(pointHovered_i, 1);
+                }
+                else if (should_place_node) {
+                    var last_vec = [];
+                    var nearest_projection = [];
+                    var nearest_index = 0;
+                    var nearest_val = Infinity;
+                    selected.strategy.forEach((node, i) => {
+                        var vec = [0, 0];
+                        if (Array.isArray(node)) {
+                            vec[0] = node[0];
+                            vec[1] = node[1];
+                        }
+                        if (i != 0) {
+                            var dx_line = last_vec[0] - vec[0];
+                            var dy_line = last_vec[1] - vec[1];
+                            var proj = [0, 0];
+                            var len = dx_line * dx_line + dy_line * dy_line;
+                            if (len == 0) {
+                                proj[0] = last_vec[0];
+                                proj[1] = last_vec[1];
+                            }
+                            else {
+                                var coeff = dot([mouseX - last_vec[0], mouseY - last_vec[1]], [vec[0] - last_vec[0], vec[1] - last_vec[1]]) / len;
+                                if (coeff < 0) {
+                                    coeff = 0;
+                                }
+                                if (coeff > 1) {
+                                    coeff = 1;
+                                }
+                                var l = [vec[0] - last_vec[0], vec[1] - last_vec[1]];
+                                proj[0] = last_vec[0] + coeff * l[0];
+                                proj[1] = last_vec[1] + coeff * l[1];
+                            }
+                            var dx = proj[0] - mouseX;
+                            var dy = proj[1] - mouseY;
+                            if (dx * dx + dy * dy < nearest_val) {
+                                nearest_val = dx * dx + dy * dy;
+                                nearest_projection = proj;
+                                nearest_index = i;
+                            }
+                        }
+                        last_vec = vec;
+                    });
+                    if (nearest_val < 10 * 10) {
+                        selected.strategy.splice(nearest_index, 0, nearest_projection);
+                    }
+                    else {
+                        selected.strategy.push([mouseX, mouseY]);
+                    }
+                }
+            }
+        }
+        else{
+            protocol.PlacePiece(mouseX, mouseY, 0.0, 1);
+            has_placed_castle = true;
+        }
+        should_place_node = true;
+        went_down_on = undefined;
+    });
+
+    window.addEventListener("pointerdown", () => {
+        mouseDown = true;
+        if (selected) {
+            selected.strategy.forEach((node, i) => {
+                if (Array.isArray(node)) {
+                    var dx = node[0] - mouseX;
+                    var dy = node[1] - mouseY;
+                    var d = dx * dx + dy * dy;
+                    if (d < 6 * 6) {
+                        went_down_on = i;
+                        should_place_node = false;
+                    }
+                }
+            });
+        }
+    });
     connection.onclose = () => {
         alert("connection zonked.");
     };
@@ -117,7 +320,8 @@ function play() {
             }
         }
     });
-    connection.onMessage("Metadata", (id, width, height) => {
+    connection.onMessage("Metadata", (id, width, height, s) => {
+        slot = s;
         m_id = id;
         gameboardWidth = width;
         gameboardHeight = height;
@@ -131,11 +335,12 @@ function play() {
             y_o: y,
             a_o: a,
             x_n: x, // current frame
-            y_n: x,
+            y_n: y,
             a_n: a,
             owner : owner,
             type: type,
-            id: id
+            id: id,
+            strategy: [[x, y]]
         }
         console.log(`new object at ${x},${y} id ${id} type ${type}`);
     });
@@ -182,7 +387,15 @@ function play() {
         }
         else {
             is_strategy = false;
-        }
+        }/*
+        for (item of Object.values(pieces)) {
+            item.x_o = item.x_n;
+            item.y_o = item.y_n;
+            item.a_o = item.a_n;
+        }*/
+    });
+    connection.onMessage("DeleteObject", (id) => {
+        delete pieces[id];
     });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";
@@ -191,4 +404,28 @@ function play() {
 window.addEventListener("wheel", evt => {
     viewX += evt.deltaX;
     viewY += evt.deltaY;
+});
+
+window.addEventListener("pointermove", evt => {
+    rawMX = evt.clientX;
+    rawMY = evt.clientY;
+    if (mouseDown && selected) {
+        if (went_down_on != undefined) {
+            if (Array.isArray(selected.strategy[went_down_on])) {
+                selected.strategy[went_down_on][0] = mouseX;
+                selected.strategy[went_down_on][1] = mouseY;
+            }
+        }
+    }
+});
+
+window.addEventListener("keyup", evt => {
+    if (evt.key == "Escape") {
+        selected = undefined;
+    }
+    keysDown[evt.key] = false;
+});
+
+window.addEventListener("keydown", evt => {
+    keysDown[evt.key] = true;
 });

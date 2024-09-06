@@ -193,7 +193,8 @@ const INCOMING_PROTOCOL = [
         layout: [
             'u64',
             'f32',
-            'f32'
+            'f32',
+            'u8'
         ]
     },
     {
@@ -227,6 +228,19 @@ const INCOMING_PROTOCOL = [
             'f32',
             'f32'
         ]
+    },
+    {
+        name: "DeleteObject",
+        layout: [
+            "u32"
+        ]
+    },
+    {
+        name: "StrategyCompletion",
+        layout: [
+            "u32",
+            "u16"
+        ]
     }
 ];
 
@@ -254,6 +268,46 @@ const OUTGOING_PROTOCOL = [
             'String',
             'String'
         ]
+    },
+    {
+        name: "PlacePiece",
+        layout: [
+            'f32',
+            'f32',
+            'f32',
+            'u16'
+        ]
+    },
+    {
+        name: "StrategyPointAdd",
+        layout: [
+            'u32',
+            'u16',
+            'f32',
+            'f32'
+        ]
+    },
+    {
+        name: "StrategyPointUpdate",
+        layout: [
+            'u32',
+            'u16',
+            'f32',
+            'f32'
+        ]
+    },
+    {
+        name: "StrategyRemove",
+        layout: [
+            'u32',
+            'u16'
+        ]
+    },
+    {
+        name: "StrategyClear",
+        layout: [
+            'u32'
+        ]
     }
 ];
 
@@ -263,9 +317,15 @@ function protocolDecode(message, typeset = PROTOCOL_TYPES, protocolset = INCOMIN
     var pItem = protocolset[view.getUint8(0)];
     var ret = [pItem.name];
     pItem.layout.forEach(type => {
-        var data = typeset[type].decode(position, view);
-        position += typeset[type].size(data); // todo: make this less bad
-        ret.push(data);
+        try {
+            var data = typeset[type].decode(position, view);
+            position += typeset[type].size(data); // todo: make this less bad
+            ret.push(data);
+        }
+        catch (e) {
+            console.error("encountered error decoding " + type + " from " + pItem.name);
+            throw e;
+        }
     });
     return ret;
 }
