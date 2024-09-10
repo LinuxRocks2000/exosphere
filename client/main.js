@@ -44,7 +44,7 @@ var rawMY = 0; // raw mouse y
 var keysDown = {};
 var mouseDown = false;
 
-var went_down_on = [undefined, undefined]; // moving and deleting strategy nodes can be done at any time, as can line insertion. 
+var went_down_on = [undefined, undefined]; // (piece, index) moving and deleting strategy nodes can be done at any time, as can line insertion. 
 // extending strategy paths at the end requires selection, as does clearing strategy nodes.
 
 var mouseX = 0; // in world units
@@ -286,24 +286,26 @@ function play() {
             has_placed_castle = true;
         }
         should_place_node = true;
-        went_down_on = undefined;
+        went_down_on[0] = undefined;
+        went_down_on[1] = undefined;
     });
 
     window.addEventListener("pointerdown", () => {
         mouseDown = true;
-        if (selected) {
-            selected.strategy.forEach((node, i) => {
+        Object.values(pieces).forEach((piece, obj_i) => {
+            piece.strategy.forEach((node, i) => {
                 if (Array.isArray(node)) {
                     var dx = node[0] - mouseX;
                     var dy = node[1] - mouseY;
                     var d = dx * dx + dy * dy;
                     if (d < 6 * 6) {
-                        went_down_on = i;
+                        went_down_on[0] = obj_i;
+                        went_down_on[1] = i;
                         should_place_node = false;
                     }
                 }
             });
-        }
+        });
     });
     connection.onclose = () => {
         alert("connection zonked.");
@@ -437,13 +439,11 @@ function play() {
     window.addEventListener("pointermove", evt => {
         rawMX = evt.clientX;
         rawMY = evt.clientY;
-        if (mouseDown && selected) {
-            if (went_down_on != undefined) {
-                if (Array.isArray(selected.strategy[went_down_on])) {
-                    selected.strategy[went_down_on][0] = mouseX;
-                    selected.strategy[went_down_on][1] = mouseY;
-                    protocol.StrategyPointUpdate(selected.id, went_down_on, mouseX, mouseY); // todo: make this suck less [right now we send position updates every mousemove event!]
-                }
+        if (mouseDown && went_down_on[0]) {
+            if (Array.isArray(pieces[went_down_on[0]].strategy[went_down_on[1]])) {
+                pieces[went_down_on[0]].strategy[went_down_on[1]][0] = mouseX;
+                pieces[went_down_on[0]].strategy[went_down_on[1]][1] = mouseY;
+                protocol.StrategyPointUpdate(went_down_on[0], went_down_on[1], mouseX, mouseY); // todo: make this suck less [right now we send position updates every mousemove event!]
             }
         }
     });
