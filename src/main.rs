@@ -24,6 +24,7 @@
 
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
+use bevy_rapier2d::dynamics::ReadMassProperties;
 use bevy_rapier2d::rapier::na::Vector;
 use warp::Filter;
 use futures_util::{StreamExt, SinkExt};
@@ -37,6 +38,9 @@ pub mod protocol;
 use protocol::Protocol;
 use protocol::ProtocolRoot;
 use crate::protocol::DecodeError;
+
+pub mod solve_spaceship;
+use solve_spaceship::*;
 
 
 const UPDATE_RATE : u64 = 30; // 30hz by default
@@ -163,7 +167,8 @@ struct GamePiece {
     slot : u8, // identity slot of the owner
     // in the future, we may want to eliminate this and instead do lookups in the HashMap (which is swisstable, so it's pretty fast)
     // but for now it's convenient
-    last_update_pos : Vec2
+    last_update_pos : Vec2,
+    last_update_ang : f32
 }
 
 
@@ -206,6 +211,20 @@ impl Fabber {
 }
 
 
+#[derive(Component)]
+struct Ship {
+    speed : f32
+}
+
+impl Ship {
+    fn normal() -> Self {
+        return Self {
+            speed : 16.0
+        }
+    }
+}
+
+
 impl GamePiece {
     fn new(type_indicator : u16, owner : u64, slot : u8) -> Self {
         Self {
@@ -215,7 +234,8 @@ impl GamePiece {
             last_update_pos : Vec2 {
                 x : 0.0,
                 y : 0.0
-            }
+            },
+            last_update_ang : 0.0
         }
     }
 }
@@ -238,15 +258,20 @@ struct Gun {
 }
 
 
+#[derive(Debug)]
 enum PathNode {
     StraightTo(f32, f32)
     // todo: teleportal
 }
 
 
+use std::collections::VecDeque;
+
 #[derive(Component)]
 struct PathFollower { // follow a path.
-    nodes : Vec<PathNode>
+    nodes : VecDeque<PathNode>
+    // empty paths are "unlinked"; unlinked objects will not attempt to move at all.
+    // path following will never clear the last node in a path (this is the endcap node, and often has extra metadata associated with it).
 }
 
 
@@ -259,9 +284,19 @@ impl PathFollower {
         }
     }
 
+    fn next(&mut self) -> bool { // if it's determined that we've completed a goal, truncate and go to the next one
+        if self.nodes.len() > 1 {
+            self.nodes.pop_front();
+            true
+        }
+        else {
+            false
+        }
+    }
+
     fn start(x : f32, y : f32) -> Self {
         Self {
-            nodes : vec![PathNode::StraightTo(x, y)]
+            nodes : VecDeque::from([PathNode::StraightTo(x, y)])
         }
     }
 }
@@ -312,6 +347,41 @@ impl Placer for EventWriter<'_, PlaceEvent> {
             tp : PlaceType::BasicFighter,
             free : true
         });
+    }
+}
+
+fn nanor(thing : f32, or : f32) -> f32 {
+    if thing.is_nan() {
+        return or;
+    }
+    return thing;
+}
+
+
+fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velocity, &Transform, &Ship, &mut PathFollower, &GamePiece, &mut Damping, &Collider, &ReadMassProperties, Entity)>, mut clients : ResMut<ClientMap>) {
+    for (mut force, mut impulse, velocity, transform, ship, mut follower, piece, mut damping, collider, massprops, entity) in ships.iter_mut() {
+        let gpos = follower.get_next_pos();
+        let cpos = transform.translation.truncate();
+        let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
+        let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
+        if (gpos - cpos).length() > 15.0 {
+            impulse.impulse = Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, 20.0) - velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.1;
+            impulse.torque_impulse = (-loopify((gpos - cpos).to_angle(), cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 30.0;
+            //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
+            // this can produce odd effects at close approach, hence the normalizer code
+            //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
+        }
+        else {
+            force.force = Vec2::ZERO;
+            force.torque = 0.0;
+            impulse.impulse = velocity.linvel / inv_mass * -0.1;
+            impulse.torque_impulse = 0.0;
+            if follower.next() {
+                if let Some(client) = clients.get_mut(&piece.owner) {
+                    client.send(ServerMessage::StrategyCompletion(entity.index(), follower.nodes.len() as u16));
+                }
+            }
+        }
     }
 }
 
@@ -390,6 +460,54 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         }
                                     }
                                 },
+                                ClientMessage::StrategyClear(id) => {
+                                    for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        if entity.index() == id { // see above
+                                            if let Some(mut pathfollower) = pathfollower {
+                                                if piece.owner == client.id {
+                                                    pathfollower.nodes.clear();
+                                                }
+                                            }
+                                            else {
+                                                println!("whoops");
+                                            }
+                                        }
+                                    }
+                                },
+                                ClientMessage::StrategyPointUpdate(id, index, x, y) => {
+                                    for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        if entity.index() == id { // see above
+                                            if let Some(mut pathfollower) = pathfollower {
+                                                if piece.owner == client.id {
+                                                    if let PathNode::StraightTo(_, _) = pathfollower.nodes[index as usize] {
+                                                        pathfollower.nodes[index as usize] = PathNode::StraightTo(x, y);
+                                                    }
+                                                    else {
+                                                        println!("warning: can't move non-point path node!");
+                                                    }
+                                                }
+                                            }
+                                            else {
+                                                println!("whoops");
+                                            }
+                                        }
+                                    }
+
+                                },
+                                ClientMessage::StrategyRemove(id, index) => {
+                                    for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        if entity.index() == id { // see above
+                                            if let Some(mut pathfollower) = pathfollower {
+                                                if piece.owner == client.id {
+                                                    pathfollower.nodes.remove(index as usize);
+                                                }
+                                            }
+                                            else {
+                                                println!("whoops");
+                                            }
+                                        }
+                                    }   
+                                }
                                 _ => {
                                     println!("error: client sent unimplemented frame! dropping client.");
                                     kill = true;
@@ -419,7 +537,7 @@ fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<C
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
             for (entity, piece, transform) in objects.iter() {
-                client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_axis_angle().1, piece.owner, entity.index(), piece.type_indicator));
+                client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_euler(EulerRot::ZYX).0, piece.owner, entity.index(), piece.type_indicator));
             }
         }
     }
@@ -429,23 +547,25 @@ fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &Ve
     for (entity, velocity, mut piece, transform) in objects.iter_mut() {
         // todo: only send position updates if it's moving
         let pos = transform.translation.truncate();
+        let ang = transform.rotation.to_euler(EulerRot::ZYX).0;
         // updates on position
-        if (pos - piece.last_update_pos).length() > 1.0 {
+        if (pos - piece.last_update_pos).length() > 1.0 || loopify(ang, piece.last_update_ang).abs() > 0.01 {
             // are basically straight lines.
             let _ = broadcast.send(ServerMessage::ObjectMove( // ignore the errors
                 entity.index(),
                 pos.x,
                 pos.y,
-                transform.rotation.to_axis_angle().1
+                transform.rotation.to_euler(EulerRot::ZYX).0
             ));
             piece.last_update_pos = pos;
+            piece.last_update_ang = ang;
         }/*
         if (velocity.linvel - piece.last_update_vel).length() > 0.1 {
             let _ = broadcast.send(ServerMessage::ObjectTrajectoryUpdate( // ignore the errors
                 entity.index(),
                 pos.x,
                 pos.y,
-                transform.rotation.to_axis_angle().1,
+                transform.rotation.to_euler(EulerRot::ZYX).0().1,
                 velocity.linvel.x,
                 velocity.linvel.y,
                 velocity.angvel
@@ -504,8 +624,8 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
     for ev in things.read() {
         let mut transform = Transform::from_xyz(ev.x, ev.y, 0.0);
         transform.rotate_z(ev.a);
-        let mut piece = commands.spawn((RigidBody::Dynamic, Velocity::zero(), TransformBundle::from(transform), ExternalForce::default(), Damping {
-            linear_damping : 0.0,
+        let mut piece = commands.spawn((RigidBody::Dynamic, Velocity::zero(), TransformBundle::from(transform), ExternalForce::default(), ExternalImpulse::default(), Damping {
+            linear_damping : 0.0,// todo: clear out unnecessary components (move them to the match statement so we don't have, say, ExternalImpulse on a static body)
             angular_damping : 0.0
         }));
         // fabber check
@@ -535,12 +655,11 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
         }
         let t_num : u16 = match ev.tp {
             PlaceType::BasicFighter => {
-                piece.insert(Collider::cuboid(20.5, 20.5));
-                piece.insert(PathFollower::start(ev.x, ev.y));
+                piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), ReadMassProperties::default()));
                 BASIC_FIGHTER_TYPE_NUM
             },
             PlaceType::Castle => {
-                piece.insert((Collider::cuboid(60.0, 60.0), Territory::castle(), Fabber::castle()));
+                piece.insert((Collider::cuboid(30.0, 30.0), Territory::castle(), Fabber::castle()));
                 CASTLE_TYPE_NUM
             }
         };
@@ -709,6 +828,7 @@ async fn main() {
         .add_systems(
             PhysicsSchedule,
             (
+                move_ships,
                 RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::SyncBackend)
                     .in_set(PhysicsSet::SyncBackend),
                 RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::StepSimulation)
@@ -735,11 +855,11 @@ async fn main() {
         .insert_resource(GameConfig {
             width: 1000.0,
             height: 1000.0,
-            wait_period: 10 * UPDATE_RATE as u16,
+            wait_period: 1 * UPDATE_RATE as u16,
             play_period: 10 * UPDATE_RATE as u16,
-            strategy_period: 10 * UPDATE_RATE as u16,
+            strategy_period: 0 * UPDATE_RATE as u16,
             max_player_slots: 1000,
-            min_player_slots: 2
+            min_player_slots: 1
         })
         .insert_resource(GameState {
             playing : false,

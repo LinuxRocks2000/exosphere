@@ -19,6 +19,13 @@
 // this is mostly thrown together to test the server
 // there will be overhauls in the future
 
+/*
+    TODO:
+    There is a problem with angle where, when n_a is near 0 and o_a is near 360, the interpolation steps
+    perform a full rotation around the circle instead of a small rotation between 360 and 0.
+    this is the use case for loopification, but I don't feel like implementing that right now, so future me gets to solve it! he's welcome!
+*/
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -37,7 +44,8 @@ var rawMY = 0; // raw mouse y
 var keysDown = {};
 var mouseDown = false;
 
-var went_down_on = undefined;// the strategy node that we are now dragging
+var went_down_on = [undefined, undefined]; // moving and deleting strategy nodes can be done at any time, as can line insertion. 
+// extending strategy paths at the end requires selection, as does clearing strategy nodes.
 
 var mouseX = 0; // in world units
 var mouseY = 0;
@@ -218,6 +226,7 @@ function play() {
                 });
                 if (keysDown["d"]) {
                     selected.strategy.splice(pointHovered_i, 1);
+                    protocol.StrategyRemove(selected.id, pointHovered_i);
                 }
                 else if (should_place_node) {
                     var last_vec = [];
@@ -263,9 +272,11 @@ function play() {
                     });
                     if (nearest_val < 10 * 10) {
                         selected.strategy.splice(nearest_index, 0, nearest_projection);
+                        protocol.StrategyPointAdd(selected.id, nearest_index, nearest_projection[0], nearest_projection[1]);
                     }
                     else {
                         selected.strategy.push([mouseX, mouseY]);
+                        protocol.StrategyPointAdd(selected.id, selected.strategy.length - 1, mouseX, mouseY);
                     }
                 }
             }
@@ -397,35 +408,50 @@ function play() {
     connection.onMessage("DeleteObject", (id) => {
         delete pieces[id];
     });
+    connection.onMessage("StrategyCompletion", (id, a) => {
+        pieces[id].strategy.splice(0, 1);
+        if (pieces[id].strategy.length != a) {
+            alert("WARNING: MISMATCHED STRATEGY PATHS!");
+        }
+    });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";
+
+    window.addEventListener("keyup", evt => {
+        if (evt.key == "Escape") {
+            selected = undefined;
+        }
+        if (evt.key == "c") {
+            if (selected) {
+                selected.strategy = [];
+                protocol.StrategyClear(selected.id);
+            }
+        }
+        keysDown[evt.key] = false;
+    });
+
+    window.addEventListener("keydown", evt => {
+        keysDown[evt.key] = true;
+    });
+
+    window.addEventListener("pointermove", evt => {
+        rawMX = evt.clientX;
+        rawMY = evt.clientY;
+        if (mouseDown && selected) {
+            if (went_down_on != undefined) {
+                if (Array.isArray(selected.strategy[went_down_on])) {
+                    selected.strategy[went_down_on][0] = mouseX;
+                    selected.strategy[went_down_on][1] = mouseY;
+                    protocol.StrategyPointUpdate(selected.id, went_down_on, mouseX, mouseY); // todo: make this suck less [right now we send position updates every mousemove event!]
+                }
+            }
+        }
+    });
 }
 
 window.addEventListener("wheel", evt => {
     viewX += evt.deltaX;
     viewY += evt.deltaY;
-});
-
-window.addEventListener("pointermove", evt => {
-    rawMX = evt.clientX;
-    rawMY = evt.clientY;
-    if (mouseDown && selected) {
-        if (went_down_on != undefined) {
-            if (Array.isArray(selected.strategy[went_down_on])) {
-                selected.strategy[went_down_on][0] = mouseX;
-                selected.strategy[went_down_on][1] = mouseY;
-            }
-        }
-    }
-});
-
-window.addEventListener("keyup", evt => {
-    if (evt.key == "Escape") {
-        selected = undefined;
-    }
-    keysDown[evt.key] = false;
-});
-
-window.addEventListener("keydown", evt => {
-    keysDown[evt.key] = true;
+    evt.preventDefault();
+    return false;
 });

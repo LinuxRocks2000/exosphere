@@ -24,7 +24,7 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      inkscape:zoom="8.9879443"
-     inkscape:cx="33.600564"
+     inkscape:cx="33.656194"
      inkscape:cy="9.5127425"
      inkscape:window-width="1920"
      inkscape:window-height="1011"
@@ -32,7 +32,8 @@
      inkscape:window-y="0"
      inkscape:window-maximized="1"
      inkscape:current-layer="layer1"
-     showguides="true">
+     showguides="true"
+     showgrid="false">
     <sodipodi:guide
        position="15.836591,17.712711"
        orientation="0,-1"
@@ -48,8 +49,8 @@
      transform="translate(-3.9539615,-2.7016372)">
     <path
        id="path1"
-       style="fill:#ff5800;stroke:none;stroke-width:0.317447;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1;fill-opacity:1"
-       d="m 9.3759827,2.7016372 v 0.00588 L 3.9539615,13.549554 8.1654966,11.151135 9.3779198,12.696438 10.590729,11.151135 14.801878,13.549554 9.379857,2.7075208 v -0.00588 l -0.00194,0.00277 z"
+       style="fill:#ff5800;fill-opacity:1;stroke:none;stroke-width:0.317447;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1"
+       d="m 14.801878,8.1236585 h -0.0059 L 3.9539614,2.7016373 6.3523804,6.9131724 4.8070774,8.1255956 6.3523804,9.3384048 3.9539614,13.549554 14.795995,8.1275328 h 0.0059 l -0.0028,-0.00194 z"
        sodipodi:nodetypes="ccccccccccc" />
   </g>
 </svg>
