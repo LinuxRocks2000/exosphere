@@ -21,10 +21,10 @@ pub fn linear_maneuvre(current_position : Vec2, goal_position : Vec2, current_ve
     let decel_dist = 0.5 * nominal_acceleration * decel_time * decel_time; // second integral of acceleration = position = p(t) = 1/2 * nominal_acceleration * t^2
     // t = decel_time
     let delta = goal_position - current_position;
-    if (delta - current_velocity).length() > delta.length() {
+    /*if (delta - current_velocity).length() > delta.length() {
         return nominal_acceleration;
     }
-    else if delta.length() <= decel_dist {
+    else */if delta.length() <= decel_dist {
         return -1.0 * nominal_acceleration;
     }
     else if current_velocity.length() < cap_speed {

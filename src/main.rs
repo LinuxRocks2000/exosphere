@@ -480,7 +480,13 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
         let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
         let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
         if (gpos - cpos).length() > 15.0 {
-            impulse.impulse = Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, 20.0) - velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.1;
+            impulse.impulse = if loopify(cangle, (gpos - cpos).to_angle()).abs() < PI / 6.0 {
+                Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, ship.speed * 3.3)
+            }
+            else {
+                Vec2::ZERO
+            };
+            impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.2; // linear deviation correction thrusters
             impulse.torque_impulse = (-loopify((gpos - cpos).to_angle(), cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
             //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
             // this can produce odd effects at close approach, hence the normalizer code
