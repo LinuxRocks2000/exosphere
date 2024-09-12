@@ -274,7 +274,6 @@ const OUTGOING_PROTOCOL = [
         layout: [
             'f32',
             'f32',
-            'f32',
             'u16'
         ]
     },
@@ -307,6 +306,13 @@ const OUTGOING_PROTOCOL = [
         name: "StrategyClear",
         layout: [
             'u32'
+        ]
+    },
+    {
+        name: "StrategySetEndcapRotation",
+        layout: [
+            'u32',
+            'f32'
         ]
     }
 ];

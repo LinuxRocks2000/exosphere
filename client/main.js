@@ -168,6 +168,29 @@ function mainloop() {
                     lastPos[1] = strat[1];
                 }
             });
+            if (item.strategy_endcap) {
+                var tx = 0;
+                var ty = 0;
+                if (item.strategy.length > 0) {
+                    tx = item.strategy[item.strategy.length - 1][0];
+                    ty = item.strategy[item.strategy.length - 1][1];
+                }
+                else {
+                    tx = item.x_n;
+                    ty = item.y_n;
+                }
+                ctx.translate(tx, ty);
+                ctx.rotate(item.strategy_endcap);
+                ctx.lineWidth = 5;
+                ctx.strokeStyle = "white";
+                ctx.beginPath();
+                ctx.moveTo(20, 20);
+                ctx.lineTo(30, 0);
+                ctx.lineTo(20, -20);
+                ctx.stroke();
+                ctx.rotate(-item.strategy_endcap);
+                ctx.translate(-tx, -ty);
+            }
             var m_dx = mouseX - x;
             var m_dy = mouseY - y;
             if (m_dx * m_dx + m_dy * m_dy < 15 * 15) {
@@ -225,7 +248,7 @@ function play() {
         }
         if (has_placed_castle) {
             let did_place = false;
-            if (should_place_node) { // do insert checks
+            if (should_place_node && is_playing && is_strategy) { // do insert checks
                 var nearest_projection = [];
                 var nearest_index = 0;
                 var nearest_val = Infinity;
@@ -298,7 +321,7 @@ function play() {
                 if (hovered) {
                     selected = hovered;
                 }
-                else if (selected) {
+                else if (selected && is_playing && is_strategy) {
                     if (should_place_node) {
                         selected.strategy.push([mouseX, mouseY]);
                         protocol.StrategyPointAdd(selected.id, selected.strategy.length - 1, mouseX, mouseY);
@@ -306,8 +329,8 @@ function play() {
                 }
             }
         }
-        else{
-            protocol.PlacePiece(mouseX, mouseY, 0.0, 1);
+        else if (is_io || !is_playing) {
+            protocol.PlacePiece(mouseX, mouseY, 1);
             has_placed_castle = true;
         }
         should_place_node = true;
@@ -317,20 +340,22 @@ function play() {
 
     window.addEventListener("pointerdown", () => {
         mouseDown = true;
-        Object.values(pieces).forEach((piece, obj_i) => {
-            piece.strategy.forEach((node, i) => {
-                if (Array.isArray(node)) {
-                    var dx = node[0] - mouseX;
-                    var dy = node[1] - mouseY;
-                    var d = dx * dx + dy * dy;
-                    if (d < 6 * 6) {
-                        went_down_on[0] = obj_i;
-                        went_down_on[1] = i;
-                        should_place_node = false;
+        if (is_playing && is_strategy) {
+            Object.values(pieces).forEach((piece, obj_i) => {
+                piece.strategy.forEach((node, i) => {
+                    if (Array.isArray(node)) {
+                        var dx = node[0] - mouseX;
+                        var dy = node[1] - mouseY;
+                        var d = dx * dx + dy * dy;
+                        if (d < 6 * 6) {
+                            went_down_on[0] = piece.id;
+                            went_down_on[1] = i;
+                            should_place_node = false;
+                        }
                     }
-                }
+                });
             });
-        });
+        }
     });
     connection.onclose = () => {
         alert("connection zonked.");
@@ -378,6 +403,7 @@ function play() {
             owner : owner,
             type: type,
             id: id,
+            strategy_endcap: undefined,
             strategy: [[x, y]]
         }
     });
@@ -448,7 +474,7 @@ function play() {
             selected = undefined;
         }
         if (evt.key == "c") {
-            if (selected) {
+            if (selected && is_playing && is_strategy) {
                 selected.strategy = [];
                 protocol.StrategyClear(selected.id);
             }
@@ -463,11 +489,19 @@ function play() {
     window.addEventListener("pointermove", evt => {
         rawMX = evt.clientX;
         rawMY = evt.clientY;
-        if (mouseDown && went_down_on[0]) {
-            if (Array.isArray(pieces[went_down_on[0]].strategy[went_down_on[1]])) {
-                pieces[went_down_on[0]].strategy[went_down_on[1]][0] = mouseX;
-                pieces[went_down_on[0]].strategy[went_down_on[1]][1] = mouseY;
-                protocol.StrategyPointUpdate(went_down_on[0], went_down_on[1], mouseX, mouseY); // todo: make this suck less [right now we send position updates every mousemove event!]
+        if (is_playing && is_strategy) {
+            if (mouseDown && went_down_on[0]) {
+                if (Array.isArray(pieces[went_down_on[0]].strategy[went_down_on[1]])) {
+                    pieces[went_down_on[0]].strategy[went_down_on[1]][0] = mouseX;
+                    pieces[went_down_on[0]].strategy[went_down_on[1]][1] = mouseY;
+                    protocol.StrategyPointUpdate(went_down_on[0], went_down_on[1], mouseX, mouseY); // todo: make this suck less [right now we send position updates every mousemove event!]
+                }
+            }
+            if (keysDown['r'] && selected) {
+                var dx = mouseX - selected.strategy[selected.strategy.length - 1][0];
+                var dy = mouseY - selected.strategy[selected.strategy.length - 1][1];
+                selected.strategy_endcap = Math.atan2(dy, dx);
+                protocol.StrategySetEndcapRotation(selected.id, selected.strategy_endcap); // todo: make this suck less (see above)
             }
         }
     });

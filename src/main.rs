@@ -25,7 +25,6 @@
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
 use bevy_rapier2d::dynamics::ReadMassProperties;
-use bevy_rapier2d::rapier::na::Vector;
 use warp::Filter;
 use futures_util::{StreamExt, SinkExt};
 use tokio::sync::{Mutex, mpsc, broadcast};
@@ -41,6 +40,9 @@ use crate::protocol::DecodeError;
 
 pub mod solve_spaceship;
 use solve_spaceship::*;
+
+pub mod pathfollower;
+use pathfollower::*;
 
 
 const UPDATE_RATE : u64 = 30; // 30hz by default
@@ -60,16 +62,17 @@ enum ClientMessage {
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8),
     Connect(String, String), // connect with your nickname and the password respectively. doesn't let you place your castle yet.
     // passwords are, like in MMOSG, used for various things: they can grant entry into a server, they can assign your team, etc. In io games they are usually ignored.
-    PlacePiece(f32, f32, f32, u16), // x, y, a, type
+    PlacePiece(f32, f32, u16), // x, y, type
     // attempt to place an object
     // before the client can place anything else, it must place a castle (type 1). this is the only time in the game that a client can place an object in neutral territory.
     // obviously it's not possible to place a castle in enemy territory
     StrategyPointAdd(u32, u16, f32, f32), // (id, index, x, y) insert a point to a strategy path at an index
     StrategyPointUpdate(u32, u16, f32, f32), // (id, index, x, y) move a point on a strategy path
     StrategyRemove(u32, u16), // (id, index) remove a node from a strategy
-    StrategyClear(u32) // (id) clear a strategy
+    StrategyClear(u32), // (id) clear a strategy
     // if any Strategy commands are sent referencing nonexistent nodes on a strategy, or StrategyPointUpdate is sent referencing a non-point strategy node (such
     // as a teleportal entrance), the server will simply ignore them. This may be a problem in the future.
+    StrategySetEndcapRotation(u32, f32), // (id, r) set the strategy endcap for an object to a rotation
 }
 
 
@@ -211,6 +214,13 @@ impl Fabber {
             l_buildings : 2
         }
     }
+
+    fn is_available(&self, tp : PlaceType) -> bool { // determine if this fabber can produce an object given its numerical identifier
+        match tp {
+            PlaceType::BasicFighter => self.l_ships >= 1,
+            PlaceType::Castle => false, // fabbers can never place castles
+        }
+    }
 }
 
 
@@ -300,7 +310,7 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
                         let mut transform = position.clone();
                         let ang = transform.rotation.to_euler(EulerRot::ZYX).0;
                         transform.translation += (Vec2::from_angle(ang) * 40.0).extend(0.0);
-                        let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), Velocity::linear(Vec2::from_angle(ang) * 400.0), TransformBundle::from(transform), Damping {
+                        let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 400.0), TransformBundle::from(transform), Damping {
                             linear_damping : 0.0,
                             angular_damping : 0.0
                         }, TimeToLive { lifetime : range }, Bullet {}, ActiveEvents::COLLISION_EVENTS));
@@ -331,11 +341,11 @@ fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>,
 
 fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>, mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, broadcast : ResMut<Sender>) {
     for event in collision_events.read() {
-        if let CollisionEvent::Started(one, two, flags) = event {
+        if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
-            if let Ok((entity_one, piece_one, bullet_one)) = pieces.get(*one) {
-                if let Ok((entity_two, piece_two, bullet_two)) = pieces.get(*two) {
+            if let Ok((_, piece_one, bullet_one)) = pieces.get(*one) {
+                if let Ok((_, piece_two, bullet_two)) = pieces.get(*two) {
                     if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
                         two_dmg = piece_one.health;
                         one_dmg = piece_one.health;
@@ -347,7 +357,7 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                 }
             }
             if one_dmg != 0.0 {
-                if let Ok((entity_one, mut piece_one, bullet_one)) = pieces.get_mut(*one) {
+                if let Ok((entity_one, mut piece_one, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
                     if piece_one.health <= 0.0 {
                         commands.entity(entity_one).despawn();
@@ -358,7 +368,7 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                 }
             }
             if two_dmg != 0.0 {
-                if let Ok((entity_two, mut piece_two, bullet_two)) = pieces.get_mut(*two) {
+                if let Ok((entity_two, mut piece_two, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
                     if piece_two.health <= 0.0 {
                         commands.entity(entity_two).despawn();
@@ -368,50 +378,6 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                     }
                 }
             }
-        }
-    }
-}
-
-
-#[derive(Debug)]
-enum PathNode {
-    StraightTo(f32, f32)
-    // todo: teleportal
-}
-
-
-use std::collections::VecDeque;
-
-#[derive(Component)]
-struct PathFollower { // follow a path.
-    nodes : VecDeque<PathNode>
-    // empty paths are "unlinked"; unlinked objects will not attempt to move at all.
-    // path following will never clear the last node in a path (this is the endcap node, and often has extra metadata associated with it).
-}
-
-
-impl PathFollower {
-    fn get_next_pos(&self) -> Vec2 {
-        match self.nodes[0] {
-            PathNode::StraightTo(x, y) => {
-                Vec2 { x, y }
-            }
-        }
-    }
-
-    fn next(&mut self) -> bool { // if it's determined that we've completed a goal, truncate and go to the next one
-        if self.nodes.len() > 1 {
-            self.nodes.pop_front();
-            true
-        }
-        else {
-            false
-        }
-    }
-
-    fn start(x : f32, y : f32) -> Self {
-        Self {
-            nodes : VecDeque::from([PathNode::StraightTo(x, y)])
         }
     }
 }
@@ -473,33 +439,46 @@ fn nanor(thing : f32, or : f32) -> f32 {
 }
 
 
-fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velocity, &Transform, &Ship, &mut PathFollower, &GamePiece, &mut Damping, &Collider, &ReadMassProperties, Entity)>, mut clients : ResMut<ClientMap>) {
-    for (mut force, mut impulse, velocity, transform, ship, mut follower, piece, mut damping, collider, massprops, entity) in ships.iter_mut() {
-        let gpos = follower.get_next_pos();
-        let cpos = transform.translation.truncate();
-        let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
-        let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
-        if (gpos - cpos).length() > 15.0 {
-            impulse.impulse = if loopify(cangle, (gpos - cpos).to_angle()).abs() < PI / 6.0 {
-                Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, ship.speed * 3.3)
+fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velocity, &Transform, &Ship, &mut PathFollower, &GamePiece, &Collider, Entity)>, mut clients : ResMut<ClientMap>) {
+    for (mut force, mut impulse, velocity, transform, ship, mut follower, piece, collider, entity) in ships.iter_mut() {
+        if let Some(next) = follower.get_next() {
+            let gpos = match next {
+                PathNode::StraightTo(x, y) => Vec2 { x, y },
+                PathNode::Teleportal(_, _) => Vec2::ZERO // TODO: IMPLEMENT
+            };
+            let cpos = transform.translation.truncate();
+            let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
+            let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
+            if (gpos - cpos).length() > 15.0 {
+                impulse.impulse = if loopify(cangle, (gpos - cpos).to_angle()).abs() < PI / 6.0 {
+                    Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, ship.speed * 3.3)
+                }
+                else {
+                    Vec2::ZERO
+                };
+                impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.2; // linear deviation correction thrusters
+                impulse.torque_impulse = (-loopify((gpos - cpos).to_angle(), cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
+                //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
+                // this can produce odd effects at close approach, hence the normalizer code
+                //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
             }
             else {
-                Vec2::ZERO
-            };
-            impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.2; // linear deviation correction thrusters
-            impulse.torque_impulse = (-loopify((gpos - cpos).to_angle(), cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
-            //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
-            // this can produce odd effects at close approach, hence the normalizer code
-            //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
-        }
-        else {
-            force.force = Vec2::ZERO;
-            force.torque = 0.0;
-            impulse.impulse = velocity.linvel / inv_mass * -0.1;
-            impulse.torque_impulse = 0.0;
-            if follower.next() {
-                if let Some(client) = clients.get_mut(&piece.owner) {
-                    client.send(ServerMessage::StrategyCompletion(entity.index(), follower.nodes.len() as u16));
+                force.force = Vec2::ZERO;
+                force.torque = 0.0;
+                impulse.impulse = velocity.linvel / inv_mass * -0.1;
+                impulse.torque_impulse = 0.0;
+                if follower.bump() {
+                    if let Some(client) = clients.get_mut(&piece.owner) {
+                        client.send(ServerMessage::StrategyCompletion(entity.index(), follower.len()));
+                    }
+                }
+                else {
+                    match follower.get_endcap() {
+                        EndNode::Rotation(r) => {
+                            impulse.torque_impulse = (-loopify(r, cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
+                        }
+                        EndNode::None => {}
+                    }
                 }
             }
         }
@@ -513,7 +492,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
         match receiver.try_recv() {
             Ok(message) => {
                 match message {
-                    Comms::ClientConnect(mut cli) => {
+                    Comms::ClientConnect(cli) => {
                         clients.insert(cli.id, cli);
                     },
                     Comms::ClientDisconnect(id) => {
@@ -540,9 +519,9 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                     client.slot = slot;
                                     ev_newclient.send(NewClientEvent {id});
                                 },
-                                ClientMessage::PlacePiece(x, y, a, t) => {
-                                    match t {
-                                        CASTLE_TYPE_NUM => {
+                                ClientMessage::PlacePiece(x, y, t) => {
+                                    if t == CASTLE_TYPE_NUM {
+                                        if (!state.playing || state.io) {
                                             if client.has_placed_castle {
                                                 println!("client attempted to place an extra castle. dropping.");
                                                 kill = true;
@@ -553,81 +532,103 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             place.basic_fighter_free(x + 200.0, y, 0.0, client.id, client.slot);
                                             place.basic_fighter_free(x, y - 200.0, 0.0, client.id, client.slot);
                                             place.basic_fighter_free(x, y + 200.0, 0.0, client.id, client.slot);
-                                        },
-                                        _ => {
-                                            println!("client attempted to place unknown type {}. dropping.", t);
-                                            kill = true;
+                                        }
+                                    }
+                                    else if state.playing && state.strategy {
+                                        match t {
+                                            _ => {
+                                                println!("client attempted to place unknown type {}. dropping.", t);
+                                                kill = true;
+                                            }
                                         }
                                     }
                                 },
                                 ClientMessage::StrategyPointAdd(id, index, x, y) => {
-                                    for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                        if entity.index() == id { // TODO: FIX THIS
-                                            // THIS IS REALLY BAD
-                                            // REALLY REALLY REALLY BAD
-                                            // WE'RE DOING LINEAR TIME LOOKUPS WHERE A CONSTANT TIME LOOKUP WOULD SUFFICE AND WELL
-                                            // FIIIIIIIIIIIIIIIIIIX THISSSSSSSSSS
-                                            if let Some(mut pathfollower) = pathfollower {
-                                                if piece.owner == client.id {
-                                                    pathfollower.nodes.insert(index as usize, PathNode::StraightTo(x, y));
+                                    if state.playing && state.strategy {
+                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                            if entity.index() == id { // TODO: FIX THIS
+                                                // THIS IS REALLY BAD
+                                                // REALLY REALLY REALLY BAD
+                                                // WE'RE DOING LINEAR TIME LOOKUPS WHERE A CONSTANT TIME LOOKUP WOULD SUFFICE AND WELL
+                                                // FIIIIIIIIIIIIIIIIIIX THISSSSSSSSSS
+                                                if let Some(mut pathfollower) = pathfollower {
+                                                    if piece.owner == client.id {
+                                                        pathfollower.insert_point(index, x, y);
+                                                    }
+                                                    else {
+                                                        println!("client attempted to move thing it doesn't own [how rude]");
+                                                    }
                                                 }
                                                 else {
-                                                    println!("client attempted to move thing it doesn't own [how rude]");
+                                                    println!("attempt to move immovable object");
                                                 }
-                                            }
-                                            else {
-                                                println!("attempt to move immovable object");
                                             }
                                         }
                                     }
                                 },
                                 ClientMessage::StrategyClear(id) => {
-                                    for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                        if entity.index() == id { // see above
-                                            if let Some(mut pathfollower) = pathfollower {
-                                                if piece.owner == client.id {
-                                                    pathfollower.nodes.clear();
+                                    if state.playing && state.strategy {
+                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                            if entity.index() == id { // see above
+                                                if let Some(mut pathfollower) = pathfollower {
+                                                    if piece.owner == client.id {
+                                                        pathfollower.clear();
+                                                    }
                                                 }
-                                            }
-                                            else {
-                                                println!("whoops");
+                                                else {
+                                                    println!("whoops");
+                                                }
                                             }
                                         }
                                     }
                                 },
                                 ClientMessage::StrategyPointUpdate(id, index, x, y) => {
-                                    for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                        if entity.index() == id { // see above
-                                            if let Some(mut pathfollower) = pathfollower {
-                                                if piece.owner == client.id {
-                                                    if let PathNode::StraightTo(_, _) = pathfollower.nodes[index as usize] {
-                                                        pathfollower.nodes[index as usize] = PathNode::StraightTo(x, y);
-                                                    }
-                                                    else {
-                                                        println!("warning: can't move non-point path node!");
+                                    if state.playing && state.strategy {
+                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                            if entity.index() == id { // see above
+                                                if let Some(mut pathfollower) = pathfollower {
+                                                    if piece.owner == client.id {
+                                                        pathfollower.update_point(index, x, y);
                                                     }
                                                 }
-                                            }
-                                            else {
-                                                println!("whoops");
+                                                else {
+                                                    println!("whoops");
+                                                }
                                             }
                                         }
                                     }
-
                                 },
                                 ClientMessage::StrategyRemove(id, index) => {
-                                    for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                        if entity.index() == id { // see above
-                                            if let Some(mut pathfollower) = pathfollower {
-                                                if piece.owner == client.id {
-                                                    pathfollower.nodes.remove(index as usize);
+                                    if state.playing && state.strategy {
+                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                            if entity.index() == id { // see above
+                                                if let Some(mut pathfollower) = pathfollower {
+                                                    if piece.owner == client.id {
+                                                        pathfollower.remove_node(index);
+                                                    }
+                                                }
+                                                else {
+                                                    println!("whoops");
                                                 }
                                             }
-                                            else {
-                                                println!("whoops");
+                                        }
+                                    }
+                                },
+                                ClientMessage::StrategySetEndcapRotation(id, r) => {
+                                    if state.playing && state.strategy {
+                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                            if entity.index() == id { // see above
+                                                if let Some(mut pathfollower) = pathfollower {
+                                                    if piece.owner == client.id {
+                                                        pathfollower.set_endcap_rotation(r);
+                                                    }
+                                                }
+                                                else {
+                                                    println!("whoops");
+                                                }
                                             }
                                         }
-                                    }   
+                                    }
                                 }
                                 _ => {
                                     println!("error: client sent unimplemented frame! dropping client.");
@@ -664,8 +665,8 @@ fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<C
     }
 }
 
-fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &Velocity, &mut GamePiece, &Transform)>) {
-    for (entity, velocity, mut piece, transform) in objects.iter_mut() {
+fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &mut GamePiece, &Transform)>) {
+    for (entity, mut piece, transform) in objects.iter_mut() {
         // todo: only send position updates if it's moving
         let pos = transform.translation.truncate();
         let ang = transform.rotation.to_euler(EulerRot::ZYX).0;
@@ -680,23 +681,11 @@ fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &Ve
             ));
             piece.last_update_pos = pos;
             piece.last_update_ang = ang;
-        }/*
-        if (velocity.linvel - piece.last_update_vel).length() > 0.1 {
-            let _ = broadcast.send(ServerMessage::ObjectTrajectoryUpdate( // ignore the errors
-                entity.index(),
-                pos.x,
-                pos.y,
-                transform.rotation.to_euler(EulerRot::ZYX).0().1,
-                velocity.linvel.x,
-                velocity.linvel.y,
-                velocity.angvel
-            ));
-            piece.last_update_vel = velocity.linvel;
-        }*/
+        }
     }
 }
 
-fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, config : Res<GameConfig>, clients : Res<ClientMap>) {
+fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, config : Res<GameConfig>) {
     if state.playing {
         state.tick += 1;
         if state.tick > state.time_in_stage {
@@ -724,7 +713,7 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
     let _ = broadcast.send(ServerMessage::GameState (state.get_state_byte(), state.tick, state.time_in_stage));
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 enum PlaceType {
     BasicFighter,
     Castle
@@ -761,7 +750,7 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 let d_y = position.translation.y - ev.y;
                 let dist = d_x * d_x + d_y * d_y;
                 println!("distance from territory (cl {}, slot {}) is {}", territory_holder.owner, territory_holder.slot, dist);
-                if dist < fabber.radius * fabber.radius {
+                if dist < fabber.radius * fabber.radius && fabber.is_available(ev.tp) {
                     if territory_holder.owner == ev.owner {
                         isfab = true;
                     }
@@ -774,7 +763,7 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
         if !isfab {
             continue;
         }
-        let mut health : f32 = 1.0;
+        let health : f32;
         let t_num : u16 = match ev.tp {
             PlaceType::BasicFighter => {
                 piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), ReadMassProperties::default(), Gun::mediocre()));
@@ -792,7 +781,8 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
     }
 }
 
-fn setup(mut commands : Commands, mut state : ResMut<GameState>, config : Res<GameConfig>) {
+fn setup(mut state : ResMut<GameState>, config : Res<GameConfig>) {
+    // todo: construct board (walls, starting rubble, etc)
     state.tick = 0;
     state.time_in_stage = config.wait_period;
 }
@@ -810,8 +800,6 @@ struct Sender(broadcast::Sender<ServerMessage>);
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PlaySchedule;
 
-
-use std::time::Duration;
 
 fn run_play_schedule(world : &mut World) {
     let state = world.get_resource::<GameState>().expect("gamestate resource not loaded!");
@@ -979,16 +967,16 @@ async fn main() {
         .insert_resource(GameConfig {
             width: 1000.0,
             height: 1000.0,
-            wait_period: 1 * UPDATE_RATE as u16,
+            wait_period: 10 * UPDATE_RATE as u16,
             play_period: 10 * UPDATE_RATE as u16,
-            strategy_period: 0 * UPDATE_RATE as u16,
+            strategy_period: 10 * UPDATE_RATE as u16,
             max_player_slots: 1000,
             min_player_slots: 1
         })
         .insert_resource(GameState {
             playing : false,
             io : false,
-            strategy : true,
+            strategy : false,
             tick : 0,
             time_in_stage : 0,
             currently_attached_players : 0

@@ -37,10 +37,10 @@ pub fn linear_maneuvre(current_position : Vec2, goal_position : Vec2, current_ve
 
 pub fn coterminal(mut thing : f32) -> f32 {
     // todo: optimize
-    while (thing < 0.0) {
+    while thing < 0.0 {
         thing += 2.0 * PI;
     }
-    while (thing >= 2.0 * PI) {
+    while thing >= 2.0 * PI {
         thing -= 2.0 * PI;
     }
     return thing;
@@ -70,10 +70,10 @@ pub fn space_gyro(current_position : f32, goal_position : f32, current_rotationa
     if delta.abs() < decel_rotation {
         return delta.signum() * nominal_radial_acceleration.min(current_rotational_velocity.abs());
     }
-    else if (current_rotational_velocity.signum() == delta.signum()) { // we need to turn around!
+    else if current_rotational_velocity.signum() == delta.signum() { // we need to turn around!
         return delta.signum() * -1.0 * nominal_radial_acceleration;
     }
-    else if (current_rotational_velocity.abs() < cap_rotational_velocity) {
+    else if current_rotational_velocity.abs() < cap_rotational_velocity {
         return delta / delta.abs() * -1.0 * nominal_radial_acceleration;
     }
     else {
