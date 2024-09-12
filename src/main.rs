@@ -52,6 +52,8 @@ const VERSION : u8 = 0; // bump this up every time a major change is made
 
 const BASIC_FIGHTER_TYPE_NUM : u16 = 0;
 const CASTLE_TYPE_NUM : u16 = 1;
+const BULLET_TYPE_NUM : u16 = 2;
+
 
 #[derive(Debug, ProtocolRoot, PartialEq)]
 enum ClientMessage {
@@ -168,7 +170,8 @@ struct GamePiece {
     // in the future, we may want to eliminate this and instead do lookups in the HashMap (which is swisstable, so it's pretty fast)
     // but for now it's convenient
     last_update_pos : Vec2,
-    last_update_ang : f32
+    last_update_ang : f32,
+    health : f32
 }
 
 
@@ -226,7 +229,7 @@ impl Ship {
 
 
 impl GamePiece {
-    fn new(type_indicator : u16, owner : u64, slot : u8) -> Self {
+    fn new(type_indicator : u16, owner : u64, slot : u8, health : f32) -> Self {
         Self {
             type_indicator,
             owner,
@@ -235,15 +238,28 @@ impl GamePiece {
                 x : 0.0,
                 y : 0.0
             },
-            last_update_ang : 0.0
+            last_update_ang : 0.0,
+            health : health
         }
     }
 }
 
 
 enum Bullets {
-    MinorBullet(f32) // simple bullet with range
+    MinorBullet(u16) // simple bullet with range
 }
+
+#[derive(Component)]
+struct TimeToLive {
+    lifetime : u16
+}
+
+
+#[derive(Component)]
+struct Bullet {} // bullet collision semantics
+// normal collisions between entities are only destructive if greater than a threshold
+// bullet collisions are always destructive
+
 
 #[derive(Component)]
 struct Gun {
@@ -255,6 +271,105 @@ struct Gun {
     // state fields (don't touch):
     r_point : u16, // current repeater position
     tick : u16 // current tick
+}
+
+
+impl Gun {
+    fn mediocre() -> Self {
+        Self {
+            enabled : true,
+            cd : 20,
+            bullets : Bullets::MinorBullet(40),
+            repeats : 0,
+            repeat_cd : 0,
+            r_point : 0,
+            tick : 0
+        }
+    }
+}
+
+
+fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mut Gun)>, broadcast : ResMut<Sender>) {
+    for (position, velocity, mut gun) in pieces.iter_mut() {
+        if gun.enabled {
+            gun.tick += 1;
+            if gun.tick > gun.cd {
+                gun.tick = 0;
+                match gun.bullets {
+                    Bullets::MinorBullet(range) => {
+                        let mut transform = position.clone();
+                        let ang = transform.rotation.to_euler(EulerRot::ZYX).0;
+                        transform.translation += (Vec2::from_angle(ang) * 40.0).extend(0.0);
+                        let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), Velocity::linear(Vec2::from_angle(ang) * 400.0), TransformBundle::from(transform), Damping {
+                            linear_damping : 0.0,
+                            angular_damping : 0.0
+                        }, TimeToLive { lifetime : range }, Bullet {}, ActiveEvents::COLLISION_EVENTS));
+                        let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), BULLET_TYPE_NUM));
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>, broadcast : ResMut<Sender>) {
+    for (entity, mut ttl) in expirees.iter_mut() {
+        if ttl.lifetime == 0 {
+            commands.entity(entity).despawn();
+            if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity.index())) {
+                println!("game engine lost connection to webserver. this is probably not critical.");
+            }
+
+        }
+        else {
+            ttl.lifetime -= 1;
+        }
+    }
+}
+
+
+fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>, mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, broadcast : ResMut<Sender>) {
+    for event in collision_events.read() {
+        if let CollisionEvent::Started(one, two, flags) = event {
+            let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
+            let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
+            if let Ok((entity_one, piece_one, bullet_one)) = pieces.get(*one) {
+                if let Ok((entity_two, piece_two, bullet_two)) = pieces.get(*two) {
+                    if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
+                        two_dmg = piece_one.health;
+                        one_dmg = piece_one.health;
+                    }
+                    if bullet_two.is_some() {
+                        one_dmg += piece_two.health;
+                        two_dmg += piece_one.health;
+                    }
+                }
+            }
+            if one_dmg != 0.0 {
+                if let Ok((entity_one, mut piece_one, bullet_one)) = pieces.get_mut(*one) {
+                    piece_one.health -= one_dmg;
+                    if piece_one.health <= 0.0 {
+                        commands.entity(entity_one).despawn();
+                        if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity_one.index())) {
+                            println!("game engine lost connection to webserver. this is probably not critical.");
+                        }
+                    }
+                }
+            }
+            if two_dmg != 0.0 {
+                if let Ok((entity_two, mut piece_two, bullet_two)) = pieces.get_mut(*two) {
+                    piece_two.health -= two_dmg;
+                    if piece_two.health <= 0.0 {
+                        commands.entity(entity_two).despawn();
+                        if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity_two.index())) {
+                            println!("game engine lost connection to webserver. this is probably not critical.");
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -366,7 +481,7 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
         let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
         if (gpos - cpos).length() > 15.0 {
             impulse.impulse = Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, 20.0) - velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.1;
-            impulse.torque_impulse = (-loopify((gpos - cpos).to_angle(), cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 30.0;
+            impulse.torque_impulse = (-loopify((gpos - cpos).to_angle(), cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
             //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
             // this can produce odd effects at close approach, hence the normalizer code
             //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
@@ -653,17 +768,20 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
         if !isfab {
             continue;
         }
+        let mut health : f32 = 1.0;
         let t_num : u16 = match ev.tp {
             PlaceType::BasicFighter => {
-                piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), ReadMassProperties::default()));
+                piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), ReadMassProperties::default(), Gun::mediocre()));
+                health = 3.0;
                 BASIC_FIGHTER_TYPE_NUM
             },
             PlaceType::Castle => {
                 piece.insert((Collider::cuboid(30.0, 30.0), Territory::castle(), Fabber::castle()));
+                health = 6.0;
                 CASTLE_TYPE_NUM
             }
         };
-        piece.insert(GamePiece::new(t_num, ev.owner, ev.slot));
+        piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));
         let _ = broadcast.send(ServerMessage::ObjectCreate(ev.x, ev.y, ev.a, ev.owner, piece.id().index(), t_num));
     }
 }
@@ -684,15 +802,15 @@ struct Sender(broadcast::Sender<ServerMessage>);
 
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PhysicsSchedule;
+pub struct PlaySchedule;
 
 
 use std::time::Duration;
 
-fn run_physics_schedule(world : &mut World) {
+fn run_play_schedule(world : &mut World) {
     let state = world.get_resource::<GameState>().expect("gamestate resource not loaded!");
     if state.playing && !state.strategy {
-        world.run_schedule(PhysicsSchedule);
+        world.run_schedule(PlaySchedule);
     }
 }
 
@@ -826,9 +944,9 @@ async fn main() {
     App::new()
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().with_default_system_setup(false))
         .add_systems(
-            PhysicsSchedule,
+            PlaySchedule,
             (
-                move_ships,
+                move_ships, shoot, ttl,
                 RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::SyncBackend)
                     .in_set(PhysicsSet::SyncBackend),
                 RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::StepSimulation)
@@ -837,8 +955,8 @@ async fn main() {
                     .in_set(PhysicsSet::Writeback),
             ),
         )
-        .init_schedule(PhysicsSchedule)
-        .edit_schedule(PhysicsSchedule, |schedule| {
+        .init_schedule(PlaySchedule)
+        .edit_schedule(PlaySchedule, |schedule| {
             schedule.configure_sets((
                 PhysicsSet::SyncBackend,
                 PhysicsSet::StepSimulation,
@@ -869,8 +987,8 @@ async fn main() {
             time_in_stage : 0,
             currently_attached_players : 0
         })
-        .add_systems(PreUpdate, run_physics_schedule)
-        .add_systems(Update, (client_tick, send_objects, position_updates, frame_broadcast.before(position_updates), make_thing))
+        .add_systems(PreUpdate, run_play_schedule)
+        .add_systems(Update, (client_tick, send_objects, position_updates, frame_broadcast.before(position_updates), make_thing, handle_collisions))
         .add_systems(Startup, setup)
         .set_runner(|mut app| {
             loop {

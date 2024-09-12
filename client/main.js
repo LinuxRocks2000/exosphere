@@ -96,6 +96,17 @@ function dot(v1, v2) {
     return v1[0] * v2[0] + v1[1] * v2[1];
 }
 
+function loopify(one, two) {
+    let delta = two - one;
+    if (delta > Math.PI) {
+        return delta - 2 * Math.PI;
+    }
+    if (delta < -Math.PI) {
+        return delta + 2 * Math.PI;
+    }
+    return delta;
+}
+
 function mainloop() {
     mouseX = viewX + rawMX - window.innerWidth / 2;
     mouseY = viewY + rawMY - window.innerHeight / 2;
@@ -118,7 +129,7 @@ function mainloop() {
         var fString = item.owner == m_id ? "friendly" : "enemy";
         var x = item.x_n * delta + item.x_o * inv_delta;
         var y = item.y_n * delta + item.y_o * inv_delta;
-        var a = item.a_n * delta + item.a_o * inv_delta;
+        var a = item.a_o + loopify(item.a_o, item.a_n) * delta;
         ctx.translate(x, y);
         ctx.rotate(a);
         if (item.type == 0) {
@@ -126,6 +137,10 @@ function mainloop() {
         }
         else if (item.type == 1) {
             ctx.drawImage(getRes("castle_" + fString), -30, -30);
+        }
+        else if (item.type == 2) {
+            ctx.fillStyle = "white";
+            ctx.fillRect(-2.5, -2.5, 5, 5);
         }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
@@ -209,72 +224,82 @@ function play() {
             return;
         }
         if (has_placed_castle) {
-            if (hovered) {
-                selected = hovered;
+            let did_place = false;
+            if (should_place_node) { // do insert checks
+                var nearest_projection = [];
+                var nearest_index = 0;
+                var nearest_val = Infinity;
+                var nearest_piece = undefined;
+                Object.values(pieces).forEach(piece => {
+                    var last_vec = [piece.x_n, piece.y_n];
+                    piece.strategy.forEach((node, i) => {
+                        var vec = [0, 0];
+                        if (Array.isArray(node)) {
+                            vec[0] = node[0];
+                            vec[1] = node[1];
+                        }
+                        var dx_line = last_vec[0] - vec[0];
+                        var dy_line = last_vec[1] - vec[1];
+                        var proj = [0, 0];
+                        var len = dx_line * dx_line + dy_line * dy_line;
+                        if (len == 0) {
+                            proj[0] = last_vec[0];
+                            proj[1] = last_vec[1];
+                        }
+                        else {
+                            var coeff = dot([mouseX - last_vec[0], mouseY - last_vec[1]], [vec[0] - last_vec[0], vec[1] - last_vec[1]]) / len;
+                            if (coeff < 0) {
+                                coeff = 0;
+                            }
+                            if (coeff > 1) {
+                                coeff = 1;
+                            }
+                            var l = [vec[0] - last_vec[0], vec[1] - last_vec[1]];
+                            proj[0] = last_vec[0] + coeff * l[0];
+                            proj[1] = last_vec[1] + coeff * l[1];
+                        }
+                        var dx = proj[0] - mouseX;
+                        var dy = proj[1] - mouseY;
+                        if (dx * dx + dy * dy < nearest_val) {
+                            nearest_val = dx * dx + dy * dy;
+                            nearest_projection = proj;
+                            nearest_index = i;
+                            nearest_piece = piece;
+                        }
+                        last_vec = vec;
+                    });
+                });
+                if (nearest_val < 10 * 10) {
+                    nearest_piece.strategy.splice(nearest_index, 0, nearest_projection);
+                    protocol.StrategyPointAdd(nearest_piece.id, nearest_index, nearest_projection[0], nearest_projection[1]);
+                    did_place = true;
+                }
             }
-            else if (selected) {
-                var pointHovered_i = 0;
-                selected.strategy.forEach((node, i) => {
+            var pointHovered_i = 0;
+            var hovered_piece = undefined;
+            Object.values(pieces).forEach(piece => {
+                piece.strategy.forEach((node, i) => {
                     if (Array.isArray(node)) {
                         var dx = node[0] - mouseX;
                         var dy = node[1] - mouseY;
                         var d = dx * dx + dy * dy;
                         if (d < 4 * 4) {
                             pointHovered_i = i;
+                            hovered_piece = piece;
                         }
                     }
                 });
-                if (keysDown["d"]) {
-                    selected.strategy.splice(pointHovered_i, 1);
-                    protocol.StrategyRemove(selected.id, pointHovered_i);
+            });
+            if (keysDown["d"]) {
+                hovered_piece.strategy.splice(pointHovered_i, 1);
+                protocol.StrategyRemove(hovered_piece.id, pointHovered_i);
+            }
+            if (!did_place) {
+                if (hovered) {
+                    selected = hovered;
                 }
-                else if (should_place_node) {
-                    var last_vec = [];
-                    var nearest_projection = [];
-                    var nearest_index = 0;
-                    var nearest_val = Infinity;
-                    selected.strategy.forEach((node, i) => {
-                        var vec = [0, 0];
-                        if (Array.isArray(node)) {
-                            vec[0] = node[0];
-                            vec[1] = node[1];
-                        }
-                        if (i != 0) {
-                            var dx_line = last_vec[0] - vec[0];
-                            var dy_line = last_vec[1] - vec[1];
-                            var proj = [0, 0];
-                            var len = dx_line * dx_line + dy_line * dy_line;
-                            if (len == 0) {
-                                proj[0] = last_vec[0];
-                                proj[1] = last_vec[1];
-                            }
-                            else {
-                                var coeff = dot([mouseX - last_vec[0], mouseY - last_vec[1]], [vec[0] - last_vec[0], vec[1] - last_vec[1]]) / len;
-                                if (coeff < 0) {
-                                    coeff = 0;
-                                }
-                                if (coeff > 1) {
-                                    coeff = 1;
-                                }
-                                var l = [vec[0] - last_vec[0], vec[1] - last_vec[1]];
-                                proj[0] = last_vec[0] + coeff * l[0];
-                                proj[1] = last_vec[1] + coeff * l[1];
-                            }
-                            var dx = proj[0] - mouseX;
-                            var dy = proj[1] - mouseY;
-                            if (dx * dx + dy * dy < nearest_val) {
-                                nearest_val = dx * dx + dy * dy;
-                                nearest_projection = proj;
-                                nearest_index = i;
-                            }
-                        }
-                        last_vec = vec;
-                    });
-                    if (nearest_val < 10 * 10) {
-                        selected.strategy.splice(nearest_index, 0, nearest_projection);
-                        protocol.StrategyPointAdd(selected.id, nearest_index, nearest_projection[0], nearest_projection[1]);
-                    }
-                    else {
+                else if (selected) {
+                    if (should_place_node) {
                         selected.strategy.push([mouseX, mouseY]);
                         protocol.StrategyPointAdd(selected.id, selected.strategy.length - 1, mouseX, mouseY);
                     }
@@ -355,7 +380,6 @@ function play() {
             id: id,
             strategy: [[x, y]]
         }
-        console.log(`new object at ${x},${y} id ${id} type ${type}`);
     });
     connection.onMessage("ObjectMove", (id, x, y, a) => {
         let p = pieces[id];
