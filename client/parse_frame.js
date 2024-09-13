@@ -241,6 +241,14 @@ const INCOMING_PROTOCOL = [
             "u32",
             "u16"
         ]
+    },
+    {
+        name: "PlayerData",
+        layout: [
+            "u64",
+            "String",
+            "u8"
+        ]
     }
 ];
 

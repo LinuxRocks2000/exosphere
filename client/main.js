@@ -72,6 +72,8 @@ var has_placed_castle = false;
 
 var slot = 0;
 
+var clients = {}; // managed list of clients in the room
+
 function onresize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -107,6 +109,19 @@ function loopify(one, two) {
     return delta;
 }
 
+function isFriendly(player) {
+    if (player == 0) {
+        return false;
+    }
+    if (clients[player].id == m_id) {
+        return true;
+    }
+    if (clients[player].slot == slot && slot >= 2) {
+        return true;
+    }
+    return false;
+}
+
 function mainloop() {
     mouseX = viewX + rawMX - window.innerWidth / 2;
     mouseY = viewY + rawMY - window.innerHeight / 2;
@@ -126,7 +141,7 @@ function mainloop() {
 
     hovered = undefined;
     for (item of Object.values(pieces)) {
-        var fString = item.owner == m_id ? "friendly" : "enemy";
+        var fString = isFriendly(item.owner) ? "friendly" : "enemy";
         var x = item.x_n * delta + item.x_o * inv_delta;
         var y = item.y_n * delta + item.y_o * inv_delta;
         var a = item.a_o + loopify(item.a_o, item.a_n) * delta;
@@ -144,6 +159,9 @@ function mainloop() {
         }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
+        var m_dx = mouseX - x;
+        var m_dy = mouseY - y;
+        var d = m_dx * m_dx + m_dy * m_dy;
         if (canUpdateStrategy(item)) {
             var lastPos = [x, y];
             item.strategy.forEach(strat => {
@@ -191,9 +209,7 @@ function mainloop() {
                 ctx.rotate(-item.strategy_endcap);
                 ctx.translate(-tx, -ty);
             }
-            var m_dx = mouseX - x;
-            var m_dy = mouseY - y;
-            if (m_dx * m_dx + m_dy * m_dy < 15 * 15) {
+            if (d < 15 * 15) {
                 ctx.strokeStyle = "#FFFFFF";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -206,6 +222,23 @@ function mainloop() {
                 ctx.lineWidth = 3;
                 ctx.strokeRect(x - 40, y - 40, 80, 80);
             }
+        }
+        if (d < 20 * 20 && item.owner != 0) {
+            ctx.fillStyle = isFriendly(item.owner) ? "rgb(0, 190, 255)" : "rgb(255, 88, 0)";
+            ctx.font = "12px sans-serif";
+            var width = ctx.measureText(clients[item.owner].banner).width;
+            ctx.beginPath();
+            ctx.moveTo(x - width - 5 - 35, y - 6 - 2.5);
+            ctx.lineTo(x - 2.5 - 35, y - 6 - 2.5);
+            ctx.lineTo(x - 2.5 - 35, y - 3);
+            ctx.lineTo(x - 2.5 - 30, y);
+            ctx.lineTo(x - 2.5 - 35, y + 3);
+            ctx.lineTo(x - 2.5 - 35, y + 6 + 2.5);
+            ctx.lineTo(x - width - 5 - 35, y + 6 + 2.5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = "black";
+            ctx.fillText(clients[item.owner].banner, x - width - 4 - 35, y + 2.5);
         }
     }
     ctx.strokeStyle = "#FFFFFF";
@@ -227,16 +260,6 @@ function canUpdateStrategy(obj) {
 }
 
 function play() {
-
-    // editing strategy nodes goes as such:
-    // 1. click the thing you want to edit
-    //   clicking anywhere will place a new node extending from the last one
-    //   dragging any already-placed point node will move it
-    //   holding "d" and clicking any node will delete it
-    //   clicking approximately on the line between any two nodes will insert a point node
-    //   holding "r" and clicking a point node will let you set an endcap rotation, IF it is the last node in the strategy
-    //   clicking "c" will clear the entire strategy
-
     var connection = new Connection(document.getElementById("server").value);
     var protocol = connection.load_protocol(OUTGOING_PROTOCOL);
 
@@ -465,6 +488,13 @@ function play() {
         if (pieces[id].strategy.length != a) {
             alert("WARNING: MISMATCHED STRATEGY PATHS!");
         }
+    });
+    connection.onMessage("PlayerData", (id, banner, slot) => {
+        clients[id] = {
+            id: id,
+            banner: banner,
+            slot: slot
+        };
     });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";

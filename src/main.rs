@@ -87,16 +87,17 @@ enum ServerMessage {
     // "move ships" mode, people can set and modify the paths their ships will follow, and in play mode the ships will move along those paths.
     // In play mode, castles that wish to do so may also "possess" a ship, controlling its motion in real time; this is the replacement for MMOSG's RTFs.
     // Bits 4-8 are reserved.
-    Metadata(u64, f32, f32, u8), // send whatever data (id, board width x height, state) the client needs to begin rendering the gameboard
+    Metadata(u64, f32, f32, u8), // send whatever data (id, board width x height, slot) the client needs to begin rendering the gameboard
     // this also tells the client that it was accepted (e.g. got the right password); getting the password _wrong_ would abort the connection
-    // state tells the client what position it's occupying. 0 = spectating, 1 = free agent, 2-255 = teams.
+    // slot tells the client what position it's occupying. 0 = spectating, 1 = free agent, 2-255 = teams.
     ObjectCreate(f32, f32, f32, u64, u32, u16), // x, y, a, owner, id, type: inform the client of an object.
     ObjectMove(u32, f32, f32, f32), // id, x, y, a
     ObjectTrajectoryUpdate(u32, f32, f32, f32, f32, f32, f32), // id, x, y, a, xv, yv, av
     DeleteObject(u32), // id
-    StrategyCompletion(u32, u16) // (id, remaining) a node in a strategy has been fulfilled, and this is the number of strategy nodes remaining!
+    StrategyCompletion(u32, u16), // (id, remaining) a node in a strategy has been fulfilled, and this is the number of strategy nodes remaining!
     // this serves as a sort of checksum; if the number of strategy nodes remaining here is different from the number of strategy nodes remaining in the client
     // the client knows there's something wrong and can send StrategyClear to attempt to recover.
+    PlayerData(u64, String, u8) // (id, banner, slot): data on another player
 }
 
 
@@ -110,8 +111,9 @@ enum ServerMessage {
 
 struct Client {
     id : u64,
+    banner : String,
     slot : u8,
-    channel : tokio::sync::mpsc::Sender<ServerMessage>,
+    channel : std::sync::Mutex<tokio::sync::mpsc::Sender<ServerMessage>>,
     has_placed_castle : bool
 }
 
@@ -148,9 +150,11 @@ impl GameState {
 
 
 impl Client {
-    fn send(&mut self, msg : ServerMessage) {
-        if let Err(_) = self.channel.try_send(msg) {
-            println!("failed to send message on channel");
+    fn send(&self, msg : ServerMessage) {
+        if let Ok(lock) = self.channel.lock() {
+            if let Err(_) = lock.try_send(msg) {
+                println!("failed to send message on channel");
+            }
         }
     }
 }
@@ -510,28 +514,39 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                     },
                     Comms::MessageFrom(id, msg) => {
                         let mut kill = false;
-                        if let Some(client) = clients.get_mut(&id) {
+                        if clients.contains_key(&id) {
                             match msg {
                                 ClientMessage::Connect(banner, password) => {
-                                    let slot : u8 = if state.currently_attached_players < config.max_player_slots { 1 } else { 0 };
-                                    client.send(ServerMessage::Metadata(id, config.width, config.height, slot));
+                                    let slot : u8 = if state.currently_attached_players < config.max_player_slots { 1 } else { 0 }; // todo: implement teams
+                                    for k in clients.keys() {
+                                        if *k != id {
+                                            let message = ServerMessage::PlayerData(*k, clients[k].banner.clone(), clients[k].slot);
+                                            clients[&id].send(message);
+                                        }
+                                    }
+                                    clients.get_mut(&id).unwrap().send(ServerMessage::Metadata(id, config.width, config.height, slot));
+                                    if let Err(_) = broadcast.send(ServerMessage::PlayerData(id, banner.clone(), slot)) {
+                                        println!("couldn't broadcast player data");
+                                    }
                                     state.currently_attached_players += 1;
-                                    client.slot = slot;
+                                    clients.get_mut(&id).unwrap().slot = slot;
+                                    clients.get_mut(&id).unwrap().banner = banner;
                                     ev_newclient.send(NewClientEvent {id});
                                 },
                                 ClientMessage::PlacePiece(x, y, t) => {
                                     if t == CASTLE_TYPE_NUM {
                                         if (!state.playing || state.io) {
-                                            if client.has_placed_castle {
+                                            if clients[&id].has_placed_castle {
                                                 println!("client attempted to place an extra castle. dropping.");
                                                 kill = true;
                                             }
-                                            client.has_placed_castle = true;
-                                            place.castle(x, y, client.id, client.slot);
-                                            place.basic_fighter_free(x - 200.0, y, PI, client.id, client.slot);
-                                            place.basic_fighter_free(x + 200.0, y, 0.0, client.id, client.slot);
-                                            place.basic_fighter_free(x, y - 200.0, 0.0, client.id, client.slot);
-                                            place.basic_fighter_free(x, y + 200.0, 0.0, client.id, client.slot);
+                                            clients.get_mut(&id).unwrap().has_placed_castle = true;
+                                            let slot = clients[&id].slot;
+                                            place.castle(x, y, id, slot);
+                                            place.basic_fighter_free(x - 200.0, y, PI, id, slot);
+                                            place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
+                                            place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
+                                            place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
                                         }
                                     }
                                     else if state.playing && state.strategy {
@@ -543,16 +558,16 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         }
                                     }
                                 },
-                                ClientMessage::StrategyPointAdd(id, index, x, y) => {
+                                ClientMessage::StrategyPointAdd(piece_id, index, x, y) => {
                                     if state.playing && state.strategy {
                                         for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                            if entity.index() == id { // TODO: FIX THIS
+                                            if entity.index() == piece_id { // TODO: FIX THIS
                                                 // THIS IS REALLY BAD
                                                 // REALLY REALLY REALLY BAD
                                                 // WE'RE DOING LINEAR TIME LOOKUPS WHERE A CONSTANT TIME LOOKUP WOULD SUFFICE AND WELL
                                                 // FIIIIIIIIIIIIIIIIIIX THISSSSSSSSSS
                                                 if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == client.id {
+                                                    if piece.owner == id {
                                                         pathfollower.insert_point(index, x, y);
                                                     }
                                                     else {
@@ -566,12 +581,12 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         }
                                     }
                                 },
-                                ClientMessage::StrategyClear(id) => {
+                                ClientMessage::StrategyClear(piece_id) => {
                                     if state.playing && state.strategy {
                                         for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                            if entity.index() == id { // see above
+                                            if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == client.id {
+                                                    if piece.owner == id {
                                                         pathfollower.clear();
                                                     }
                                                 }
@@ -582,12 +597,12 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         }
                                     }
                                 },
-                                ClientMessage::StrategyPointUpdate(id, index, x, y) => {
+                                ClientMessage::StrategyPointUpdate(piece_id, index, x, y) => {
                                     if state.playing && state.strategy {
                                         for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                            if entity.index() == id { // see above
+                                            if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == client.id {
+                                                    if piece.owner == id {
                                                         pathfollower.update_point(index, x, y);
                                                     }
                                                 }
@@ -598,12 +613,12 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         }
                                     }
                                 },
-                                ClientMessage::StrategyRemove(id, index) => {
+                                ClientMessage::StrategyRemove(piece_id, index) => {
                                     if state.playing && state.strategy {
                                         for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                            if entity.index() == id { // see above
+                                            if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == client.id {
+                                                    if piece.owner == id {
                                                         pathfollower.remove_node(index);
                                                     }
                                                 }
@@ -614,12 +629,12 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         }
                                     }
                                 },
-                                ClientMessage::StrategySetEndcapRotation(id, r) => {
+                                ClientMessage::StrategySetEndcapRotation(piece_id, r) => {
                                     if state.playing && state.strategy {
                                         for (entity, piece, pathfollower) in pieces.iter_mut() {
-                                            if entity.index() == id { // see above
+                                            if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == client.id {
+                                                    if piece.owner == id {
                                                         pathfollower.set_endcap_rotation(r);
                                                     }
                                                 }
@@ -839,8 +854,9 @@ async fn main() {
                 let mut cl = Some(Client {
                     has_placed_castle : false,
                     id : my_id,
+                    banner : "None".to_string(),
                     slot : 0,
-                    channel : from_bevy_tx
+                    channel : std::sync::Mutex::new(from_bevy_tx)
                 });
                 if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode())).await {
                     println!("client disconnected before handshake");
