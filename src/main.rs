@@ -97,7 +97,9 @@ enum ServerMessage {
     StrategyCompletion(u32, u16), // (id, remaining) a node in a strategy has been fulfilled, and this is the number of strategy nodes remaining!
     // this serves as a sort of checksum; if the number of strategy nodes remaining here is different from the number of strategy nodes remaining in the client
     // the client knows there's something wrong and can send StrategyClear to attempt to recover.
-    PlayerData(u64, String, u8) // (id, banner, slot): data on another player
+    PlayerData(u64, String, u8), // (id, banner, slot): data on another player
+    YouLose, // you LOST!
+    Winner(u64) // id of the winner. if 0, it was a tie.
 }
 
 
@@ -138,7 +140,8 @@ struct GameState {
     strategy : bool,
     tick : u16,
     time_in_stage : u16,
-    currently_attached_players : u16
+    currently_attached_players : u16, // the number of players CONNECTED
+    currently_playing : u16 // the number of players with territory
 }
 
 
@@ -343,7 +346,7 @@ fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>,
 }
 
 
-fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>, mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, broadcast : ResMut<Sender>) {
+fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>, mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
@@ -364,6 +367,10 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                 if let Ok((entity_one, mut piece_one, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
                     if piece_one.health <= 0.0 {
+                        if piece_one.type_indicator == CASTLE_TYPE_NUM {
+                            client_killed.send(ClientKilledEvent { client : piece_one.owner });
+                            println!("possible client kill");
+                        }
                         commands.entity(entity_one).despawn();
                         if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity_one.index())) {
                             println!("game engine lost connection to webserver. this is probably not critical.");
@@ -375,6 +382,10 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                 if let Ok((entity_two, mut piece_two, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
                     if piece_two.health <= 0.0 {
+                        if piece_two.type_indicator == CASTLE_TYPE_NUM {
+                            client_killed.send(ClientKilledEvent { client : piece_two.owner });
+                            println!("possible client kill");
+                        }
                         commands.entity(entity_two).despawn();
                         if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity_two.index())) {
                             println!("game engine lost connection to webserver. this is probably not critical.");
@@ -490,7 +501,7 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
 }
 
 
-fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>)>, mut ev_newclient : EventWriter<NewClientEvent>, mut place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>) {
+fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>)>, mut ev_newclient : EventWriter<NewClientEvent>, mut place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
     // manage events from network-connected clients
     loop { // loops receiver.try_recv(), until it returns empty
         match receiver.try_recv() {
@@ -511,6 +522,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                         }
                         state.currently_attached_players -= 1;
                         clients.remove(&id);
+                        client_killed.send(ClientKilledEvent { client : id });
                     },
                     Comms::MessageFrom(id, msg) => {
                         let mut kill = false;
@@ -523,6 +535,9 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             let message = ServerMessage::PlayerData(*k, clients[k].banner.clone(), clients[k].slot);
                                             clients[&id].send(message);
                                         }
+                                    }
+                                    if slot != 0 {
+                                        state.currently_playing += 1;
                                     }
                                     clients.get_mut(&id).unwrap().send(ServerMessage::Metadata(id, config.width, config.height, slot));
                                     if let Err(_) = broadcast.send(ServerMessage::PlayerData(id, banner.clone(), slot)) {
@@ -802,6 +817,62 @@ fn setup(mut state : ResMut<GameState>, config : Res<GameConfig>) {
     state.time_in_stage = config.wait_period;
 }
 
+
+#[derive(Event)]
+struct ClientKilledEvent { // something happened that could have killed a client
+    // we'll healthcheck to see if the client actually died and update game state accordingly
+    client : u64
+}
+
+
+fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut broadcast : ResMut<Sender>) {
+    // checks:
+    // * if the client is still present (if the client disconnected, it's dead by default!), exit early
+    // * if the client has any remaining Territory, it's not dead, false alarm
+    // if we determined that the client is in fact dead, send a Lose message and update the state accordingly.
+    // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
+    let mut did_something = false;
+    for ev in events.read() {
+        println!("client kill checking");
+        if !clients.contains_key(&ev.client) { // if the client's already disconnected, we can't exactly tell them they lost
+            state.currently_playing -= 1;
+        }
+        else {
+            let mut has_territory = false;
+            for (territory, piece, _) in pieces.iter() {
+                if territory.is_some() && piece.owner == ev.client {
+                    has_territory = true; 
+                }
+            }
+            if !has_territory {
+                state.currently_playing -= 1;
+                clients[&ev.client].send(ServerMessage::YouLose);
+            }
+        }
+        did_something = true;
+    }
+    if did_something { // only if we made a change does it make sense to update the state here
+        if state.currently_playing < 2 {
+            if state.currently_playing == 1 {
+                let mut winid : u64 = 0;
+                // TODO: broadcast win frames to everyone
+                clients.remove(&winid);
+            }
+            state.playing = false;
+            state.strategy = false;
+            state.tick = 0;
+            state.time_in_stage = config.wait_period;
+            state.currently_attached_players = 0;
+            state.currently_playing = 0;
+            for (_, _, entity) in pieces.iter() {
+                // todo: don't delete things that are supposed to stick around (like walls)
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+}
+
+
 #[derive(Resource, Deref, DerefMut)]
 struct ClientMap(HashMap<u64, Client>);
 
@@ -974,6 +1045,7 @@ async fn main() {
             ).chain());
         })
         .add_event::<NewClientEvent>()
+        .add_event::<ClientKilledEvent>()
         .add_event::<PlaceEvent>()
         .insert_resource(config)
         .insert_resource(ClientMap(HashMap::new()))
@@ -995,10 +1067,17 @@ async fn main() {
             strategy : false,
             tick : 0,
             time_in_stage : 0,
-            currently_attached_players : 0
+            currently_attached_players : 0,
+            currently_playing : 0
         })
         .add_systems(PreUpdate, run_play_schedule)
-        .add_systems(Update, (client_tick, send_objects, position_updates, frame_broadcast.before(position_updates), make_thing, handle_collisions))
+        .add_systems(Update, (client_tick,
+            send_objects,
+            position_updates,
+            frame_broadcast.before(position_updates),
+            make_thing,
+            handle_collisions,
+            client_health_check.before(handle_collisions))) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, setup)
         .set_runner(|mut app| {
             loop {

@@ -113,6 +113,9 @@ function isFriendly(player) {
     if (player == 0) {
         return false;
     }
+    if (!clients[player]) {
+        return false;
+    }
     if (clients[player].id == m_id) {
         return true;
     }
@@ -496,6 +499,17 @@ function play() {
             slot: slot
         };
     });
+    connection.onMessage("YouLose", () => {
+        alert("game over! you lose!");
+    });
+    connection.onMessage("Winner", (id) => {
+        if (id == m_id) {
+            alert("game over! you win!");
+        }
+        else {
+            alert(clients[id].banner + " wins!");
+        }
+    })
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";
 

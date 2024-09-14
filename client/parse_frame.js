@@ -249,6 +249,16 @@ const INCOMING_PROTOCOL = [
             "String",
             "u8"
         ]
+    },
+    {
+        name: "YouLose",
+        layout: []
+    },
+    {
+        name: "Winner",
+        layout: [
+            'u64'
+        ]
     }
 ];
 
