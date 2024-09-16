@@ -876,9 +876,11 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
     // * if the client has any remaining Territory, it's not dead, false alarm
     // if we determined that the client is in fact dead, send a Lose message and update the state accordingly.
     // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
+    if !state.playing {
+        return; // client kill can't happen during wait mode
+    }
     let mut did_something = false;
     for ev in events.read() {
-        println!("client kill checking");
         if !clients.contains_key(&ev.client) { // if the client's already disconnected, we can't exactly tell them they lost
             state.currently_playing -= 1;
         }
@@ -1114,7 +1116,7 @@ async fn main() {
         .insert_resource(GameConfig {
             width: 5000.0,
             height: 5000.0,
-            wait_period: 100 * UPDATE_RATE as u16,
+            wait_period: 20 * UPDATE_RATE as u16,
             play_period: 10 * UPDATE_RATE as u16,
             strategy_period: 10 * UPDATE_RATE as u16,
             max_player_slots: 1000,

@@ -138,11 +138,23 @@ function mainloop() {
     background_overlay(window.innerWidth / 2 - viewX, window.innerHeight / 2 + viewY, gameboardWidth, gameboardHeight, pieces, active_fabbers, active_territories);
     mouseX = viewX + rawMX - window.innerWidth / 2;
     mouseY = viewY + rawMY - window.innerHeight / 2;
+    if (mouseX < 0) {
+        mouseX = 0;
+    }
+    if (mouseY < 0) {
+        mouseY = 0;
+    }
+    if (mouseX > gameboardWidth) {
+        mouseX = gameboardWidth;
+    }
+    if (mouseY > gameboardHeight) {
+        mouseY = gameboardHeight;
+    }
     var translateX = window.innerWidth / 2 - viewX; // in screen units, adjust the view so it is in fact centered on (viewX, viewY)
     var translateY = window.innerHeight / 2 - viewY;
-    ctx.fillStyle = "#000022";
-    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
-    ctx.drawImage(document.getElementById("grid-overlay"), 0, 0);//ctx.putImageData(imageData, 0, 0);
+    ctx.fillStyle = "rgba(0, 0, 0, 0)";
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    //ctx.drawImage(document.getElementById("grid-overlay"), 0, 0);//ctx.putImageData(imageData, 0, 0);
     ctx.fillStyle = "white";
     ctx.fillText(time_so_far + "/" + time_in_stage + " in " + (is_playing ? (is_strategy ? "strategy" : "play") : "wait") + "mode.", 30, 30);
     ctx.translate(translateX, translateY);

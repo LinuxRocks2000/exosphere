@@ -19,7 +19,7 @@
         <link rel="stylesheet" href="main.css" />
     </head>
     <body>
-        <canvas id="grid-overlay" style="display: none;"></canvas>
+        <canvas id="grid-overlay"></canvas>
         <canvas id="game"></canvas>
         <!-- todo: screenshots of exosphere games in the background for #prettiness -->
         <div id="ui">
@@ -57,7 +57,7 @@
     void main(){
         float x_in = gl_FragCoord.x - boardOffset.x;
         float y_in = gl_FragCoord.y - boardOffset.y;
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+        gl_FragColor = vec4(0.0, 0.0, 0.1, 1.0);
         if (gl_FragCoord.x > boardOffset.x && gl_FragCoord.y < boardOffset.y && gl_FragCoord.x < boardOffset.x + boardSize.x && gl_FragCoord.y > boardOffset.y - boardSize.y) {
             int nearest_territory = -1;
             float nearest_dist = -1.0;
