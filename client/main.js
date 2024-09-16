@@ -58,6 +58,7 @@ var selected = undefined; // current selected thing
 var should_place_node = true; // should we place a strategy node when the pointer goes up? usually true, sets to false when you use a gesture (like dragging a point)
 
 var m_id = undefined;
+var money = 0;
 
 var lastFrameTime = 0;
 
@@ -156,7 +157,11 @@ function mainloop() {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     //ctx.drawImage(document.getElementById("grid-overlay"), 0, 0);//ctx.putImageData(imageData, 0, 0);
     ctx.fillStyle = "white";
-    ctx.fillText(time_so_far + "/" + time_in_stage + " in " + (is_playing ? (is_strategy ? "strategy" : "play") : "wait") + "mode.", 30, 30);
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(time_so_far + "/" + time_in_stage + " in " + (is_playing ? (is_strategy ? "strategy" : "play") : "wait") + "mode.", window.innerWidth - 30, 30);
+    ctx.fillText("$" + money, window.innerWidth - 30, 60);
+    ctx.textAlign = "left";
     ctx.translate(translateX, translateY);
     ctx.strokeStyle = "#FFFFFF";
     ctx.lineWidth = 2;
@@ -182,6 +187,9 @@ function mainloop() {
         else if (item.type == 2) {
             ctx.fillStyle = "white";
             ctx.fillRect(-2.5, -2.5, 5, 5);
+        }
+        else if (item.type == 3) {
+            ctx.drawImage(getRes("tie_fighter_" + fString), -20, -25);
         }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
@@ -298,7 +306,7 @@ function canUpdateStrategy(obj) {
     if (obj.owner != m_id) {
         return false; // we can never move an object that isn't ours
     }
-    return [0].indexOf(obj.type) != -1;
+    return [0, 3].indexOf(obj.type) != -1;
 }
 
 function play() {
@@ -306,7 +314,7 @@ function play() {
     var protocol = connection.load_protocol(OUTGOING_PROTOCOL);
 
 
-    window.addEventListener("pointerup", () => {
+    canvas.addEventListener("pointerup", () => {
         mouseDown = false;
         if (slot == 0) { // past this point, spectators can't do anything
             return;
@@ -393,6 +401,18 @@ function play() {
                     }
                 }
             }
+            if (selected == undefined && is_playing && is_strategy) { // if there's no piece selected, and we're actually playing, and 
+                let placer = document.querySelector("#buyshipmenu input:checked + label");
+                if (placer) {
+                    if (money >= placer.getAttribute("--data-price")) {
+                        protocol.PlacePiece(mouseX, mouseY, placer.getAttribute("--data-place-type"));
+                        if (!keysDown[" "]) {
+                            placer.previousElementSibling.checked = false; // uncheck it so we don't end up placing an extra piece
+                            // if the user is holding down spacebar, we don't clear it, because that's so damn annoying
+                        }
+                    }
+                }
+            }
         }
         else if (is_io || !is_playing) {
             if (can_place_here) {
@@ -405,7 +425,7 @@ function play() {
         went_down_on[1] = undefined;
     });
 
-    window.addEventListener("pointerdown", () => {
+    canvas.addEventListener("pointerdown", () => {
         mouseDown = true;
         if (is_playing && is_strategy) {
             Object.values(pieces).forEach((piece, obj_i) => {
@@ -560,6 +580,12 @@ function play() {
     connection.onMessage("Disconnect", () => {
         location.reload();
     });
+    connection.onMessage("Money", (id, amt) => {
+        clients[id].money = amt;
+        if (id == m_id) {
+            money = amt;
+        }
+    });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";
 
@@ -580,7 +606,7 @@ function play() {
         keysDown[evt.key] = true;
     });
 
-    window.addEventListener("pointermove", evt => {
+    canvas.addEventListener("pointermove", evt => {
         rawMX = evt.clientX;
         rawMY = evt.clientY;
         if (is_playing && is_strategy) {
@@ -601,7 +627,7 @@ function play() {
     });
 }
 
-window.addEventListener("wheel", evt => {
+canvas.addEventListener("wheel", evt => {
     viewX += evt.deltaX;
     viewY += evt.deltaY;
     evt.preventDefault();
@@ -617,4 +643,15 @@ for (el of document.getElementsByTagName("input")) {
     if (localStorage["inputstate_" + el.id]) {
         el.value = localStorage["inputstate_" + el.id];
     }
+}
+
+for (let el of document.querySelectorAll("#buyshipmenu > div > div > label")) {
+    let inp = el.previousElementSibling;
+    el.addEventListener("mouseup", () => {
+        if (inp.checked) {
+            setTimeout(() => {
+                inp.checked = false;
+            }, 0);
+        }
+    });
 }

@@ -277,6 +277,13 @@ const INCOMING_PROTOCOL = [
     {
         name: "Disconnect",
         layout: []
+    },
+    {
+        name: "Money",
+        layout: [
+            'u64',
+            'u32'
+        ]
     }
 ];
 

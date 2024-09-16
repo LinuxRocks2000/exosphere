@@ -19,6 +19,12 @@ body > * {
     box-sizing: border-box;
 }
 
+#gameui {
+    width: auto;
+    height: auto;
+    display: inline-block;
+}
+
 * {
     margin: 0px;
     padding: 0px;
@@ -40,4 +46,45 @@ body > * {
     color: white;
     text-align: center;
     padding: 100px;
+}
+
+#buyshipmenu {
+    margin: 10px;
+    border-radius: 100vw;
+    background-color: rgb(57, 57, 77);
+    display: inline-flex;
+    flex-direction: column;
+    padding: 10px;
+}
+
+#buyshipmenu > div {
+    max-width: 50px;
+    display: flex;
+    transition: max-width 0.3s;
+    overflow: hidden;
+}
+
+#buyshipmenu > div:hover, #buyshipmenu > div:has(div > input:checked) {
+    max-width: 50vw;
+}
+
+#buyshipmenu > div > div {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+#buyshipmenu > div > div > input {
+    display: none;
+}
+
+#buyshipmenu > div > div > label {
+    display: inline-block;
+}
+
+#buyshipmenu > div > div > input:checked + label {
+    background-color: red;
+}
+
+#buyshipmenu > div > div > input + label:hover {
+    background-color: pink;
 }

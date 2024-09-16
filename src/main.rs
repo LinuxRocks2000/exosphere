@@ -55,6 +55,7 @@ const VERSION : u8 = 0; // bump this up every time a major change is made
 const BASIC_FIGHTER_TYPE_NUM : u16 = 0;
 const CASTLE_TYPE_NUM : u16 = 1;
 const BULLET_TYPE_NUM : u16 = 2;
+const TIE_FIGHTER_TYPE_NUM : u16 = 3;
 
 
 #[derive(Debug, ProtocolRoot, PartialEq)]
@@ -102,7 +103,9 @@ enum ServerMessage {
     Winner(u64), // id of the winner. if 0, it was a tie.
     Territory(u32, f32), // set the territory radius for a piece
     Fabber(u32, f32), // set the fabber radius for a piece
-    Disconnect
+    Disconnect,
+    Money(u64, u32) // set the money amount for a client
+    // in the future we may want to be able to see the money of our allies, so the id tag could be useful
 }
 
 
@@ -164,6 +167,20 @@ impl Client {
                 println!("failed to send message on channel");
             }
         }
+    }
+
+    fn collect(&mut self, amount : u32) {
+        self.money += amount;
+        self.send(ServerMessage::Money(self.id, self.money));
+    }
+
+    fn charge(&mut self, amount : u32) -> bool { // returns if we actually successfully made the charge or not
+        if self.money >= amount {
+            self.money -= amount;
+            self.send(ServerMessage::Money(self.id, self.money));
+            return true;
+        }
+        return false;
     }
 }
 
@@ -230,6 +247,7 @@ impl Fabber {
     fn is_available(&self, tp : PlaceType) -> bool { // determine if this fabber can produce an object given its numerical identifier
         match tp {
             PlaceType::BasicFighter => self.l_ships >= 1,
+            PlaceType::TieFighter => self.l_ships >= 1,
             PlaceType::Castle => false, // fabbers can never place castles
         }
     }
@@ -292,6 +310,8 @@ struct Gun {
     repeat_cd : u16, // time between repeater shots
     // state fields (don't touch):
     r_point : u16, // current repeater position
+    // the repeat pattern is pretty simple. when a bullet is fired, r_point is incremented by one, and if it's less than the number of repeats, `tick` is set to
+    // repeat_cd instead of cd. when r_point >= repeats, r_point = 0 and tick = cd.
     tick : u16 // current tick
 }
 
@@ -308,15 +328,33 @@ impl Gun {
             tick : 0
         }
     }
+
+    fn basic_repeater(repeats : u16) -> Self {
+        Self {
+            enabled : true,
+            cd : 25,
+            bullets : Bullets::MinorBullet(50),
+            repeats,
+            repeat_cd : 5,
+            r_point : 0,
+            tick : 0
+        }
+    }
 }
 
 
 fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mut Gun)>, broadcast : ResMut<Sender>) {
     for (position, velocity, mut gun) in pieces.iter_mut() {
         if gun.enabled {
-            gun.tick += 1;
-            if gun.tick > gun.cd {
-                gun.tick = 0;
+            if gun.tick == 0 {
+                gun.r_point += 1;
+                if gun.r_point >= gun.repeats {
+                    gun.tick = gun.cd;
+                    gun.r_point = 0;
+                }
+                else {
+                    gun.tick = gun.repeat_cd;
+                }
                 match gun.bullets {
                     Bullets::MinorBullet(range) => {
                         let mut transform = position.clone();
@@ -330,6 +368,7 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
                     }
                 }
             }
+            gun.tick -= 1;
         }
     }
 }
@@ -408,18 +447,11 @@ struct NewClientEvent {
     id : u64
 }
 
+struct Placer<'a> (EventWriter<'a, PlaceEvent>);
 
-trait Placer { // trait that we can implement on EventWriter
-    fn castle(&mut self, x : f32, y : f32, client : u64, slot : u8);
-
-    fn basic_fighter(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8);
-
-    fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8);
-}
-
-impl Placer for EventWriter<'_, PlaceEvent> {
+impl Placer<'_> {
     fn castle(&mut self, x : f32, y : f32, client : u64, slot : u8) {
-        self.send(PlaceEvent {
+        self.0.send(PlaceEvent {
             x,
             y,
             a : 0.0,
@@ -431,7 +463,7 @@ impl Placer for EventWriter<'_, PlaceEvent> {
     }
 
     fn basic_fighter(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
-        self.send(PlaceEvent {
+        self.0.send(PlaceEvent {
             x, y, a,
             owner : client,
             slot,
@@ -440,8 +472,18 @@ impl Placer for EventWriter<'_, PlaceEvent> {
         });
     }
 
+    fn tie_fighter(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a,
+            owner : client,
+            slot,
+            tp : PlaceType::TieFighter,
+            free : false
+        });
+    }
+
     fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
-        self.send(PlaceEvent {
+        self.0.send(PlaceEvent {
             x, y, a,
             owner : client,
             slot,
@@ -507,6 +549,7 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
 
 
 fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>, Option<&Transform>, Option<&Territory>)>, mut ev_newclient : EventWriter<NewClientEvent>, mut place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
+    let mut place = Placer(place);
     // manage events from network-connected clients
     loop { // loops receiver.try_recv(), until it returns empty
         match receiver.try_recv() {
@@ -541,7 +584,6 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             clients[&id].send(message);
                                         }
                                     }
-                                    state.currently_playing += 1;
                                     clients.get_mut(&id).unwrap().send(ServerMessage::Metadata(id, config.width, config.height, slot));
                                     if let Err(_) = broadcast.send(ServerMessage::PlayerData(id, banner.clone(), slot)) {
                                         println!("couldn't broadcast player data");
@@ -574,8 +616,10 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                                     }
                                                 }
                                                 if is_okay {
+                                                    state.currently_playing += 1;
                                                     clients.get_mut(&id).unwrap().has_placed_castle = true;
                                                     clients.get_mut(&id).unwrap().alive = true;
+                                                    clients.get_mut(&id).unwrap().collect(100);
                                                     let slot = clients[&id].slot;
                                                     place.castle(x, y, id, slot);
                                                     place.basic_fighter_free(x - 200.0, y, PI, id, slot);
@@ -587,7 +631,18 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         }
                                     }
                                     else if state.playing && state.strategy {
+                                        let slot = clients[&id].slot;
                                         match t {
+                                            BASIC_FIGHTER_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(10) {
+                                                    place.basic_fighter(x, y, 0.0, id, slot);
+                                                }
+                                            },
+                                            TIE_FIGHTER_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(20) {
+                                                    place.tie_fighter(x, y, 0.0, id, slot);
+                                                }
+                                            }
                                             _ => {
                                                 println!("client attempted to place unknown type {}. dropping.", t);
                                                 kill = true;
@@ -774,7 +829,8 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
 #[derive(Copy, Clone, Debug)]
 enum PlaceType {
     BasicFighter,
-    Castle
+    Castle,
+    TieFighter
 }
 
 #[derive(Event)]
@@ -838,7 +894,7 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
         let health : f32;
         let t_num : u16 = match ev.tp {
             PlaceType::BasicFighter => {
-                piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), ReadMassProperties::default(), Gun::mediocre()));
+                piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::mediocre()));
                 health = 3.0;
                 BASIC_FIGHTER_TYPE_NUM
             },
@@ -850,6 +906,11 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 piece.insert((Collider::cuboid(30.0, 30.0), terr, fab));
                 health = 6.0;
                 CASTLE_TYPE_NUM
+            },
+            PlaceType::TieFighter => {
+                piece.insert((Collider::cuboid(20.0, 25.0), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::basic_repeater(2)));
+                health = 3.0;
+                TIE_FIGHTER_TYPE_NUM
             }
         };
         piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));
@@ -919,7 +980,6 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
             state.strategy = false;
             state.tick = 0;
             state.time_in_stage = config.wait_period;
-            state.currently_attached_players = 0;
             state.currently_playing = 0;
             for (_, _, entity) in pieces.iter() {
                 // todo: don't delete things that are supposed to stick around (like walls)
@@ -977,7 +1037,7 @@ async fn main() {
                 *topid += 1;
                 drop(topid);
                 let (mut client_tx, mut client_rx) = client.split();
-                let (from_bevy_tx, mut from_bevy_rx) = tokio::sync::mpsc::channel(10);
+                let (from_bevy_tx, mut from_bevy_rx) = tokio::sync::mpsc::channel(128);
                 let mut me_verified = false;
                 let mut cl = Some(Client {
                     has_placed_castle : false,
@@ -985,7 +1045,8 @@ async fn main() {
                     banner : "None".to_string(),
                     slot : 0,
                     channel : std::sync::Mutex::new(from_bevy_tx),
-                    alive : false
+                    alive : false,
+                    money : 0
                 });
                 if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode())).await {
                     println!("client disconnected before handshake");
@@ -1117,8 +1178,8 @@ async fn main() {
         .insert_resource(GameConfig {
             width: 5000.0,
             height: 5000.0,
-            wait_period: 20 * UPDATE_RATE as u16,
-            play_period: 10 * UPDATE_RATE as u16,
+            wait_period: 10 * UPDATE_RATE as u16, // todo: config files
+            play_period: 10 * UPDATE_RATE as u16, // probably gonna be json because I have no balls
             strategy_period: 10 * UPDATE_RATE as u16,
             max_player_slots: 1000,
             min_player_slots: 1

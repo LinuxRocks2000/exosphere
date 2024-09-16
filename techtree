@@ -11,7 +11,7 @@ which can build anything; your forts, outposts, and farms have weaker fabber bay
 
 [Ships] Ships move slower than missiles but are more coordinated. They fire bullets intermittently. $600/level.
 * Fighter <base type>: Small, somewhat-slow ship that fires one minor bullet per 30 play ticks. $10. Level 1.
-* Tie Fighter: Larger ship that moves at the same speed as a Fighter. Has a repeater weapon - fires minor bullets in a 25-5 repeater pattern. $20. Level 1.
+* Tie Fighter: Larger ship that moves at the same speed as a Fighter. Has a repeater weapon - fires minor bullets in a 25-5 repeater pattern. Slightly better range. $20. Level 1.
 * Sniper: Small, fast ship that fires one long-range bullet every 120 ticks. $30. Level 1.
 * Gunship: Small ship at the same speed as a Fighter. Fires minor bullets in a 25-5 repeater pattern, but aimed with the turret algorithm. Will not fire
     without enemies in range; will friendly-fire. $60. Level 2.

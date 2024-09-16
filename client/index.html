@@ -22,22 +22,38 @@
         <canvas id="grid-overlay"></canvas>
         <canvas id="game"></canvas>
         <!-- todo: screenshots of exosphere games in the background for #prettiness -->
-        <div id="ui">
-            <div id="loginmenu">
-                <!-- todo: logo (not this nasty text) -->
-                <!-- todo: general niceification -->
-                <h1>Exosphere</h1>
-                <b>Server: </b><input type="text" id="server" oninput="saveinputstate(this);"><br>
-                <b>Nickname: </b><input type="text" id="nickname" oninput="saveinputstate(this);"><br>
-                <button id="play" onclick="play()">Play</button>
-            </div>
-            <div id="gameui" style="display: none">
+        <div id="loginmenu">
+            <!-- todo: logo (not this nasty text) -->
+            <!-- todo: general niceification -->
+            <h1>Exosphere</h1>
+            <b>Server: </b><input type="text" id="server" oninput="saveinputstate(this);"><br>
+            <b>Nickname: </b><input type="text" id="nickname" oninput="saveinputstate(this);"><br>
+            <button id="play" onclick="play()">Play</button>
+        </div>
+        <div id="gameui" style="display: none">
+            <div id="buyshipmenu">
+                <div>
+                    <div>
+                        <input type="radio" name="shippicker" id="shippicker-bfighter">
+                        <label for="shippicker-bfighter" --data-place-type="0" --data-price="10">
+                            <img src="res/basic_fighter_friendly.svg" height="30px">
+                        </label>
+                    </div>
+                    <div>
+                        <input type="radio" name="shippicker" id="shippicker-tfighter">
+                        <label for="shippicker-tfighter" --data-place-type="3" --data-price="20">
+                            <img src="res/tie_fighter_friendly.svg" height="30px">
+                        </label>
+                    </div>
+                </div>
             </div>
         </div>
         <div id="waitscreen" style="display: none;">
             Loading. Please wait. If this takes more than a few seconds, your connection is probably zonked.
         </div>
         <div style="display: none" id="res">
+            <img src="res/tie_fighter_friendly.svg" id="tie_fighter_friendly">
+            <img src="res/tie_fighter_enemy.svg" id="tie_fighter_enemy">
             <img src="res/basic_fighter_friendly.svg" id="basic_fighter_friendly">
             <img src="res/basic_fighter_enemy.svg" id="basic_fighter_enemy">
             <img src="res/castle_friendly.svg" id="castle_friendly">
