@@ -354,7 +354,7 @@ const OUTGOING_PROTOCOL = [
 ];
 
 function protocolDecode(message, typeset = PROTOCOL_TYPES, protocolset = INCOMING_PROTOCOL) { // returns an array. first element is the message name (like "Test"). next elements are the message content, in order.
-    var view = new DataView(message.buffer);
+    var view = new DataView(message);
     var position = 1;
     var pItem = protocolset[view.getUint8(0)];
     var ret = [pItem.name];

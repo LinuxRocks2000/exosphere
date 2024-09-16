@@ -606,4 +606,15 @@ window.addEventListener("wheel", evt => {
     viewY += evt.deltaY;
     evt.preventDefault();
     return false;
-});
+}, { passive: false });
+
+
+function saveinputstate(el) {
+    localStorage["inputstate_" + el.id] = el.value;
+}
+
+for (el of document.getElementsByTagName("input")) {
+    if (localStorage["inputstate_" + el.id]) {
+        el.value = localStorage["inputstate_" + el.id];
+    }
+}

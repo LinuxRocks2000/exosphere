@@ -120,7 +120,8 @@ struct Client {
     slot : u8,
     channel : std::sync::Mutex<tokio::sync::mpsc::Sender<ServerMessage>>,
     has_placed_castle : bool,
-    alive : bool
+    alive : bool,
+    money : u32 // if I make it a u16 richard will crash the server by somehow farming up >66k money
 }
 
 

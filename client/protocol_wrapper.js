@@ -34,7 +34,7 @@ class Connection {
             }
         });
         this.socket.addEventListener("message", async (msg) => {
-            let bytes = await msg.data.bytes();
+            let bytes = await msg.data.arrayBuffer();
             let frame = protocolDecode(bytes);
             this.frameEvents[frame.shift()](...frame);
         });

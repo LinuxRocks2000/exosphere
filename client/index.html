@@ -27,8 +27,8 @@
                 <!-- todo: logo (not this nasty text) -->
                 <!-- todo: general niceification -->
                 <h1>Exosphere</h1>
-                <b>Server: </b><input type="text" id="server"><br>
-                <b>Nickname: </b><input type="text" id="nickname"><br>
+                <b>Server: </b><input type="text" id="server" oninput="saveinputstate(this);"><br>
+                <b>Nickname: </b><input type="text" id="nickname" oninput="saveinputstate(this);"><br>
                 <button id="play" onclick="play()">Play</button>
             </div>
             <div id="gameui" style="display: none">
