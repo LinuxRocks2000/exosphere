@@ -217,7 +217,7 @@ struct Fabber { // a fabber bay with a radius
 impl Fabber {
     fn castle() -> Self {
         Self { // Large-M4S2E2D3B2
-            radius : 300.0,
+            radius : 500.0,
             l_missiles : 4,
             l_ships : 2,
             l_econ : 2,
@@ -505,7 +505,7 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
 }
 
 
-fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>)>, mut ev_newclient : EventWriter<NewClientEvent>, mut place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
+fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>, Option<&Transform>, Option<&Territory>)>, mut ev_newclient : EventWriter<NewClientEvent>, mut place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
     // manage events from network-connected clients
     loop { // loops receiver.try_recv(), until it returns empty
         match receiver.try_recv() {
@@ -516,7 +516,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                     },
                     Comms::ClientDisconnect(id) => {
                         println!("client disconnected. cleaning up!");
-                        for (entity, piece, _) in pieces.iter() {
+                        for (entity, piece, _, _, _) in pieces.iter() {
                             if piece.owner == id {
                                 commands.entity(entity).despawn();
                                 if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity.index())) {
@@ -558,14 +558,30 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                                 kill = true;
                                             }
                                             else {
-                                                clients.get_mut(&id).unwrap().has_placed_castle = true;
-                                                clients.get_mut(&id).unwrap().alive = true;
-                                                let slot = clients[&id].slot;
-                                                place.castle(x, y, id, slot);
-                                                place.basic_fighter_free(x - 200.0, y, PI, id, slot);
-                                                place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
-                                                place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
-                                                place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
+                                                let mut is_okay = true;
+                                                for (_, _, _, transform, territory) in pieces.iter() {
+                                                    if let Some(transform) = transform {
+                                                        if let Some(territory) = territory {
+                                                            let dx = transform.translation.x - x;
+                                                            let dy = transform.translation.y - y;
+                                                            let d = (dx * dx + dy * dy).sqrt();
+                                                            if d < territory.radius + 600.0 { // if the territories would intersect
+                                                                is_okay = false;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                if is_okay {
+                                                    clients.get_mut(&id).unwrap().has_placed_castle = true;
+                                                    clients.get_mut(&id).unwrap().alive = true;
+                                                    let slot = clients[&id].slot;
+                                                    place.castle(x, y, id, slot);
+                                                    place.basic_fighter_free(x - 200.0, y, PI, id, slot);
+                                                    place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
+                                                    place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
+                                                    place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
+                                                }
                                             }
                                         }
                                     }
@@ -580,7 +596,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                 },
                                 ClientMessage::StrategyPointAdd(piece_id, index, x, y) => {
                                     if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
                                             if entity.index() == piece_id { // TODO: FIX THIS
                                                 // THIS IS REALLY BAD
                                                 // REALLY REALLY REALLY BAD
@@ -603,7 +619,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                 },
                                 ClientMessage::StrategyClear(piece_id) => {
                                     if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
                                             if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
                                                     if piece.owner == id {
@@ -619,7 +635,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                 },
                                 ClientMessage::StrategyPointUpdate(piece_id, index, x, y) => {
                                     if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
                                             if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
                                                     if piece.owner == id {
@@ -635,7 +651,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                 },
                                 ClientMessage::StrategyRemove(piece_id, index) => {
                                     if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
                                             if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
                                                     if piece.owner == id {
@@ -651,7 +667,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                 },
                                 ClientMessage::StrategySetEndcapRotation(piece_id, r) => {
                                     if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower) in pieces.iter_mut() {
+                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
                                             if entity.index() == piece_id { // see above
                                                 if let Some(mut pathfollower) = pathfollower {
                                                     if piece.owner == id {
@@ -690,13 +706,16 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
     }
 }
 
-fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform, Option<&Territory>)>) {
+fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform, Option<&Territory>, Option<&Fabber>)>) {
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
-            for (entity, piece, transform, territory) in objects.iter() {
+            for (entity, piece, transform, territory, fabber) in objects.iter() {
                 client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_euler(EulerRot::ZYX).0, piece.owner, entity.index(), piece.type_indicator));
                 if let Some(territory) = territory {
                     client.send(ServerMessage::Territory(entity.index(), territory.radius));
+                }
+                if let Some(fabber) = fabber {
+                    client.send(ServerMessage::Fabber(entity.index(), fabber.radius));
                 }
             }
         }
@@ -738,7 +757,7 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
         }
     }
     else {
-        if state.currently_attached_players >= config.min_player_slots {
+        if state.currently_playing >= config.min_player_slots {
             state.tick += 1;
         }
         else {
@@ -768,8 +787,8 @@ struct PlaceEvent {
     free : bool // do we need to fabber check this one? if free is set to true, fabber and territory checks are skipped
 }
 
-fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, &Fabber)>) {
-    for ev in things.read() {
+fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
+    'evloop: for ev in things.read() {
         let mut transform = Transform::from_xyz(ev.x, ev.y, 0.0);
         transform.rotate_z(ev.a);
         let mut piece = commands.spawn((RigidBody::Dynamic, Velocity::zero(), TransformBundle::from(transform), ExternalForce::default(), ExternalImpulse::default(), Damping {
@@ -783,22 +802,36 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
             isfab = true;
         }
         else {
-            for (territory_holder, position, fabber) in territories.iter() {
+            for (territory_holder, position, fabber, territory) in territories.iter() {
                 let d_x = position.translation.x - ev.x;
                 let d_y = position.translation.y - ev.y;
                 let dist = d_x * d_x + d_y * d_y;
-                println!("distance from territory (cl {}, slot {}) is {}", territory_holder.owner, territory_holder.slot, dist);
-                if dist < fabber.radius * fabber.radius && fabber.is_available(ev.tp) {
-                    if territory_holder.owner == ev.owner {
-                        isfab = true;
+                if let Some(fabber) = fabber {
+                    println!("distance from territory (cl {}, slot {}) is {}", territory_holder.owner, territory_holder.slot, dist);
+                    if dist < fabber.radius * fabber.radius && fabber.is_available(ev.tp) {
+                        if territory_holder.owner == ev.owner {
+                            isfab = true;
+                        }
+                        if territory_holder.slot > 1 && ev.slot == territory_holder.slot {
+                            isfab = true;
+                        }
                     }
-                    if territory_holder.slot > 1 && ev.slot == territory_holder.slot {
-                        isfab = true;
+                }
+                if let Some(territory) = territory {
+                    if let PlaceType::Castle = ev.tp {
+                        if dist.sqrt() < territory.radius + 600.0 {
+                            if territory_holder.owner != ev.owner && (territory_holder.slot == 1 || territory_holder.slot != ev.slot) {
+                                println!("too close!");
+                                piece.despawn();
+                                continue 'evloop;
+                            }
+                        }
                     }
                 }
             }
         }
         if !isfab {
+            piece.despawn();
             continue;
         }
         let health : f32;
@@ -809,8 +842,11 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 BASIC_FIGHTER_TYPE_NUM
             },
             PlaceType::Castle => {
-                let _ = broadcast.send(ServerMessage::Territory(piece.id().index(), 600.0));
-                piece.insert((Collider::cuboid(30.0, 30.0), Territory::castle(), Fabber::castle()));
+                let terr = Territory::castle();
+                let fab = Fabber::castle();
+                let _ = broadcast.send(ServerMessage::Territory(piece.id().index(), terr.radius));
+                let _ = broadcast.send(ServerMessage::Fabber(piece.id().index(), fab.radius));
+                piece.insert((Collider::cuboid(30.0, 30.0), terr, fab));
                 health = 6.0;
                 CASTLE_TYPE_NUM
             }
@@ -1078,7 +1114,7 @@ async fn main() {
         .insert_resource(GameConfig {
             width: 5000.0,
             height: 5000.0,
-            wait_period: 10 * UPDATE_RATE as u16,
+            wait_period: 100 * UPDATE_RATE as u16,
             play_period: 10 * UPDATE_RATE as u16,
             strategy_period: 10 * UPDATE_RATE as u16,
             max_player_slots: 1000,

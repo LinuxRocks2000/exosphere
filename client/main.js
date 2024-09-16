@@ -72,6 +72,9 @@ var time_so_far = 0;
 
 var has_placed_castle = false;
 
+var can_place_here = true; // for CASTLES ONLY! todo: rename
+// this code really needs a refactor :sigh:
+
 var slot = 0;
 
 var clients = {}; // managed list of clients in the room
@@ -257,6 +260,22 @@ function mainloop() {
     ctx.beginPath();
     ctx.arc(mouseX, mouseY, 10, 0, Math.PI * 2);
     ctx.stroke();
+    if (!has_placed_castle) {
+        can_place_here = true;
+        for (tid of Object.keys(active_territories)) {
+            let dx = mouseX - pieces[tid].x_n;
+            let dy = mouseY - pieces[tid].y_n;
+            let d = Math.sqrt(dx * dx + dy * dy);
+            if (d < active_territories[tid] + 600.0) {
+                can_place_here = false;
+            }
+        }
+        ctx.beginPath();
+        ctx.strokeStyle = can_place_here ? "#AAAAAA" : "#AA0000";
+        ctx.lineWidth = 1;
+        ctx.arc(mouseX, mouseY, 600, 0, Math.PI * 2);
+        ctx.stroke();
+    }
 
     ctx.translate(-translateX, -translateY);
     requestAnimationFrame(mainloop);
@@ -364,8 +383,10 @@ function play() {
             }
         }
         else if (is_io || !is_playing) {
-            protocol.PlacePiece(mouseX, mouseY, 1);
-            has_placed_castle = true;
+            if (can_place_here) {
+                protocol.PlacePiece(mouseX, mouseY, 1);
+                has_placed_castle = true;
+            }
         }
         should_place_node = true;
         went_down_on[0] = undefined;
