@@ -259,6 +259,24 @@ const INCOMING_PROTOCOL = [
         layout: [
             'u64'
         ]
+    },
+    {
+        name: "Territory",
+        layout: [
+            'u32',
+            'f32'
+        ]
+    },
+    {
+        name: "Fabber",
+        layout: [
+            'u32',
+            'f32'
+        ]
+    },
+    {
+        name: "Disconnect",
+        layout: []
     }
 ];
 

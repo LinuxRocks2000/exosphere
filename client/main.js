@@ -29,6 +29,8 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
+const background_overlay = setup_gridoverlay_renderer();
+
 const VERSION = 0; // bump for possibly-breaking protocol or gameplay changes
 
 const TEST = ["EXOSPHERE", 128, 4096, 115600, 123456789012345n, -64, -4096, -115600, -123456789012345n, -4096.51220703125, -8192.756, VERSION];
@@ -77,6 +79,8 @@ var clients = {}; // managed list of clients in the room
 function onresize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    document.getElementById("grid-overlay").width = window.innerWidth;
+    document.getElementById("grid-overlay").height = window.innerHeight;
 }
 
 onresize();
@@ -89,6 +93,8 @@ function getRes(res) {
     return res_cache[res];
 }
 
+var active_territories = {};
+var active_fabbers = {};
 var pieces = {}; // hash table of ids
 // the relationship between Bevy indexes and memory layout is unpredictable, so it makes more sense to use a hash table than a potentially extremely oversized padded array
 
@@ -126,12 +132,14 @@ function isFriendly(player) {
 }
 
 function mainloop() {
+    background_overlay(window.innerWidth / 2 - viewX, window.innerHeight / 2 + viewY, gameboardWidth, gameboardHeight, pieces, active_fabbers, active_territories);
     mouseX = viewX + rawMX - window.innerWidth / 2;
     mouseY = viewY + rawMY - window.innerHeight / 2;
     var translateX = window.innerWidth / 2 - viewX; // in screen units, adjust the view so it is in fact centered on (viewX, viewY)
     var translateY = window.innerHeight / 2 - viewY;
     ctx.fillStyle = "#000022";
     ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.drawImage(document.getElementById("grid-overlay"), 0, 0);//ctx.putImageData(imageData, 0, 0);
     ctx.fillStyle = "white";
     ctx.fillText(time_so_far + "/" + time_in_stage + " in " + (is_playing ? (is_strategy ? "strategy" : "play") : "wait") + "mode.", 30, 30);
     ctx.translate(translateX, translateY);
@@ -509,7 +517,16 @@ function play() {
         else {
             alert(clients[id].banner + " wins!");
         }
-    })
+    });
+    connection.onMessage("Territory", (id, radius) => {
+        active_territories[id] = radius;
+    });
+    connection.onMessage("Fabber", (id, radius) => {
+        active_fabbers[id] = radius;
+    });
+    connection.onMessage("Disconnect", () => {
+        location.reload();
+    });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";
 

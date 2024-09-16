@@ -19,6 +19,7 @@
         <link rel="stylesheet" href="main.css" />
     </head>
     <body>
+        <canvas id="grid-overlay" style="display: none;"></canvas>
         <canvas id="game"></canvas>
         <!-- todo: screenshots of exosphere games in the background for #prettiness -->
         <div id="ui">
@@ -44,6 +45,75 @@
         </div>
         <script src="parse_frame.js"></script>
         <script src="protocol_wrapper.js"></script>
+        <script type="shader/fragment" id="fragment-shader">
+    precision highp float;
+    uniform vec2 boardOffset;
+    uniform vec2 boardSize;
+    uniform vec3 territories[64];
+    uniform vec3 fabbers[64];
+    uniform int territory_count;
+    uniform int fabber_count;
+
+    void main(){
+        float x_in = gl_FragCoord.x - boardOffset.x;
+        float y_in = gl_FragCoord.y - boardOffset.y;
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+        if (gl_FragCoord.x > boardOffset.x && gl_FragCoord.y < boardOffset.y && gl_FragCoord.x < boardOffset.x + boardSize.x && gl_FragCoord.y > boardOffset.y - boardSize.y) {
+            int nearest_territory = -1;
+            float nearest_dist = -1.0;
+            int nearest_affiliation = 0; // 0 = default, 1 = friendly, 2 = unfriendly
+            int border = 0; // whether we're on a border or not
+            int inside = 0; // the number of territory radii we're inside
+            for (int i = 0; i < 64; i ++) {
+                if (i >= territory_count) {
+                    break;
+                }
+                float dx = x_in - territories[i].x;
+                float dy = y_in + territories[i].y;
+                float d = sqrt(dx * dx + dy * dy);
+                if (d < abs(territories[i].z) + 1.0) {
+                    if (nearest_dist == -1.0 || d < nearest_dist) {
+                        nearest_dist = d;
+                        nearest_territory = i;
+                        if (territories[i].z < 0.0) {
+                            nearest_affiliation = 2;
+                        }
+                        else {
+                            nearest_affiliation = 1;
+                        }
+                    }
+                    inside ++;
+                }
+                if (abs(d - abs(territories[i].z)) < 0.5) {
+                    border = 1;
+                }
+            }
+            if (mod(x_in, 75.0) < 1.0 || mod(y_in, 75.0) < 1.0) { // render grid lines
+                if (nearest_dist != -1.0) {
+                    if (nearest_affiliation == 2) {
+                        gl_FragColor = vec4(0.5, 0.0, 0.0, 1.0);
+                    }
+                    else if (nearest_affiliation == 1) {
+                        gl_FragColor = vec4(0.0, 0.5, 0.0, 1.0);
+                    }
+                }
+                else {
+                    gl_FragColor = vec4(0.3, 0.3, 0.3, 1.0);
+                }
+            }
+            if (border == 1 && inside == 1) {
+                gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+            }
+        }
+    }
+        </script>
+        <script type="shader/vertex" id="vertex-shader">
+    attribute vec2 position;
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+    }
+        </script>
+        <script src="gl.js"></script>
         <script src="main.js"></script>
     </body>
 </html>

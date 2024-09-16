@@ -99,7 +99,10 @@ enum ServerMessage {
     // the client knows there's something wrong and can send StrategyClear to attempt to recover.
     PlayerData(u64, String, u8), // (id, banner, slot): data on another player
     YouLose, // you LOST!
-    Winner(u64) // id of the winner. if 0, it was a tie.
+    Winner(u64), // id of the winner. if 0, it was a tie.
+    Territory(u32, f32), // set the territory radius for a piece
+    Fabber(u32, f32), // set the fabber radius for a piece
+    Disconnect
 }
 
 
@@ -116,7 +119,8 @@ struct Client {
     banner : String,
     slot : u8,
     channel : std::sync::Mutex<tokio::sync::mpsc::Sender<ServerMessage>>,
-    has_placed_castle : bool
+    has_placed_castle : bool,
+    alive : bool
 }
 
 
@@ -536,9 +540,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             clients[&id].send(message);
                                         }
                                     }
-                                    if slot != 0 {
-                                        state.currently_playing += 1;
-                                    }
+                                    state.currently_playing += 1;
                                     clients.get_mut(&id).unwrap().send(ServerMessage::Metadata(id, config.width, config.height, slot));
                                     if let Err(_) = broadcast.send(ServerMessage::PlayerData(id, banner.clone(), slot)) {
                                         println!("couldn't broadcast player data");
@@ -555,13 +557,16 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                                 println!("client attempted to place an extra castle. dropping.");
                                                 kill = true;
                                             }
-                                            clients.get_mut(&id).unwrap().has_placed_castle = true;
-                                            let slot = clients[&id].slot;
-                                            place.castle(x, y, id, slot);
-                                            place.basic_fighter_free(x - 200.0, y, PI, id, slot);
-                                            place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
-                                            place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
-                                            place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
+                                            else {
+                                                clients.get_mut(&id).unwrap().has_placed_castle = true;
+                                                clients.get_mut(&id).unwrap().alive = true;
+                                                let slot = clients[&id].slot;
+                                                place.castle(x, y, id, slot);
+                                                place.basic_fighter_free(x - 200.0, y, PI, id, slot);
+                                                place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
+                                                place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
+                                                place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
+                                            }
                                         }
                                     }
                                     else if state.playing && state.strategy {
@@ -685,11 +690,14 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
     }
 }
 
-fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform)>) {
+fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform, Option<&Territory>)>) {
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
-            for (entity, piece, transform) in objects.iter() {
+            for (entity, piece, transform, territory) in objects.iter() {
                 client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_euler(EulerRot::ZYX).0, piece.owner, entity.index(), piece.type_indicator));
+                if let Some(territory) = territory {
+                    client.send(ServerMessage::Territory(entity.index(), territory.radius));
+                }
             }
         }
     }
@@ -801,6 +809,7 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 BASIC_FIGHTER_TYPE_NUM
             },
             PlaceType::Castle => {
+                let _ = broadcast.send(ServerMessage::Territory(piece.id().index(), 600.0));
                 piece.insert((Collider::cuboid(30.0, 30.0), Territory::castle(), Fabber::castle()));
                 health = 6.0;
                 CASTLE_TYPE_NUM
@@ -847,6 +856,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
             if !has_territory {
                 state.currently_playing -= 1;
                 clients[&ev.client].send(ServerMessage::YouLose);
+                clients.get_mut(&ev.client).unwrap().alive = false;
             }
         }
         did_something = true;
@@ -855,8 +865,16 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
         if state.currently_playing < 2 {
             if state.currently_playing == 1 {
                 let mut winid : u64 = 0;
-                // TODO: broadcast win frames to everyone
-                clients.remove(&winid);
+                for (id, client) in clients.iter() {
+                    if client.alive {
+                        winid = *id;
+                        break;
+                    }
+                }
+                for (id, client) in clients.iter() {
+                    client.send(ServerMessage::Winner(winid));
+                    client.send(ServerMessage::Disconnect);
+                }
             }
             state.playing = false;
             state.strategy = false;
@@ -927,7 +945,8 @@ async fn main() {
                     id : my_id,
                     banner : "None".to_string(),
                     slot : 0,
-                    channel : std::sync::Mutex::new(from_bevy_tx)
+                    channel : std::sync::Mutex::new(from_bevy_tx),
+                    alive : false
                 });
                 if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode())).await {
                     println!("client disconnected before handshake");
@@ -994,6 +1013,10 @@ async fn main() {
                                         println!("channel failure 4");
                                         break 'cli_loop;
                                     }
+                                    if let ServerMessage::Disconnect = msg {
+                                        let _ = client_tx.close().await;
+                                        break 'cli_loop;
+                                    }
                                 }
                                 None => {
                                     println!("channel failure 5: connection to game engine broken");
@@ -1053,8 +1076,8 @@ async fn main() {
         .insert_resource(Receiver(to_bevy_rx))
         .insert_resource(Sender(from_bevy_broadcast_tx))
         .insert_resource(GameConfig {
-            width: 1000.0,
-            height: 1000.0,
+            width: 5000.0,
+            height: 5000.0,
             wait_period: 10 * UPDATE_RATE as u16,
             play_period: 10 * UPDATE_RATE as u16,
             strategy_period: 10 * UPDATE_RATE as u16,
