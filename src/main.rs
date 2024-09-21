@@ -44,6 +44,9 @@ use solve_spaceship::*;
 pub mod pathfollower;
 use pathfollower::*;
 
+pub mod events;
+use events::*;
+
 
 const UPDATE_RATE : u64 = 30; // 30hz by default
 const FRAME_TIME : std::time::Duration = std::time::Duration::from_millis(1000 / UPDATE_RATE); // milliseconds per frame
@@ -56,6 +59,10 @@ const BASIC_FIGHTER_TYPE_NUM : u16 = 0;
 const CASTLE_TYPE_NUM : u16 = 1;
 const BULLET_TYPE_NUM : u16 = 2;
 const TIE_FIGHTER_TYPE_NUM : u16 = 3;
+const SNIPER_TYPE_NUM : u16 = 4;
+const DEMOLITION_CRUISER_TYPE_NUM : u16 = 5;
+const BATTLESHIP_TYPE_NUM : u16 = 6;
+const SMALL_BOMB_TYPE_NUM : u16 = 7;
 
 
 #[derive(Debug, ProtocolRoot, PartialEq)]
@@ -104,8 +111,9 @@ enum ServerMessage {
     Territory(u32, f32), // set the territory radius for a piece
     Fabber(u32, f32), // set the fabber radius for a piece
     Disconnect,
-    Money(u64, u32) // set the money amount for a client
+    Money(u64, u32), // set the money amount for a client
     // in the future we may want to be able to see the money of our allies, so the id tag could be useful
+    Explosion(f32, f32, f32, f32) // x, y, radius, damage: an explosion happened! the client should render it for one frame and then kill it
 }
 
 
@@ -237,7 +245,7 @@ impl Fabber {
         Self { // Large-M4S2E2D3B2
             radius : 500.0,
             l_missiles : 4,
-            l_ships : 2,
+            l_ships : 3,
             l_econ : 2,
             l_defense : 3,
             l_buildings : 2
@@ -249,6 +257,9 @@ impl Fabber {
             PlaceType::BasicFighter => self.l_ships >= 1,
             PlaceType::TieFighter => self.l_ships >= 1,
             PlaceType::Castle => false, // fabbers can never place castles
+            PlaceType::Sniper => self.l_ships >= 1,
+            PlaceType::DemolitionCruiser => self.l_ships >= 2,
+            PlaceType::Battleship => self.l_ships >= 3
         }
     }
 }
@@ -256,13 +267,29 @@ impl Fabber {
 
 #[derive(Component)]
 struct Ship {
-    speed : f32
+    speed : f32,
+    acc_profile : f32 // in percentage of speed
 }
 
 impl Ship {
     fn normal() -> Self {
         return Self {
-            speed : 16.0
+            speed : 16.0,
+            acc_profile : 0.33
+        }
+    }
+
+    fn fast() -> Self {
+        return Self {
+            speed : 32.0,
+            acc_profile : 0.5
+        }
+    }
+
+    fn slow() -> Self {
+        return Self {
+            speed : 12.0,
+            acc_profile : 0.33
         }
     }
 }
@@ -285,8 +312,10 @@ impl GamePiece {
 }
 
 
+#[derive(Copy, Clone)]
 enum Bullets {
-    MinorBullet(u16) // simple bullet with range
+    MinorBullet(u16), // simple bullet with range
+    Bomb(ExplosionProperties, u16) // properties of the explosion we're boutta detonate, range of the bullet
 }
 
 #[derive(Component)]
@@ -296,9 +325,33 @@ struct TimeToLive {
 
 
 #[derive(Component)]
-struct Bullet {} // bullet collision semantics
+struct Bullet {
+    tp : Bullets
+} // bullet collision semantics
 // normal collisions between entities are only destructive if greater than a threshold
 // bullet collisions are always destructive
+
+
+enum Targeting { // for guns
+    Straight, // fire in the direction the gun is facing
+    Nearest // fire on the nearest enemy
+}
+
+
+#[derive(Copy, Clone, Component)]
+struct ExplosionProperties {
+    radius : f32,
+    damage : f32
+}
+
+impl ExplosionProperties {
+    fn small() -> Self {
+        Self {
+            radius : 100.0,
+            damage : 2.0
+        }
+    }
+}
 
 
 #[derive(Component)]
@@ -312,7 +365,10 @@ struct Gun {
     r_point : u16, // current repeater position
     // the repeat pattern is pretty simple. when a bullet is fired, r_point is incremented by one, and if it's less than the number of repeats, `tick` is set to
     // repeat_cd instead of cd. when r_point >= repeats, r_point = 0 and tick = cd.
-    tick : u16 // current tick
+    tick : u16, // current tick
+    barrels : u16,
+    barrel_spacing : f32,
+    center_offset : f32
 }
 
 
@@ -325,7 +381,10 @@ impl Gun {
             repeats : 0,
             repeat_cd : 0,
             r_point : 0,
-            tick : 0
+            tick : 1,
+            barrels : 1,
+            barrel_spacing : 0.0,
+            center_offset : 40.0
         }
     }
 
@@ -337,8 +396,52 @@ impl Gun {
             repeats,
             repeat_cd : 5,
             r_point : 0,
-            tick : 0
+            tick : 1,
+            barrels : 1,
+            barrel_spacing : 0.0,
+            center_offset : 40.0
         }
+    }
+
+    fn sniper() -> Self {
+        Self {
+            enabled : true,
+            cd : 150,
+            bullets : Bullets::MinorBullet(200),
+            repeats : 0,
+            repeat_cd : 0,
+            r_point : 0,
+            tick : 1,
+            barrels : 1,
+            barrel_spacing : 0.0,
+            center_offset : 40.0
+        }
+    }
+
+    fn bomber() -> Self {
+        Self {
+            enabled : true,
+            cd : 120,
+            bullets : Bullets::Bomb(ExplosionProperties::small(), 75),
+            repeats : 0,
+            repeat_cd : 0,
+            r_point : 0,
+            tick : 1,
+            barrels : 1,
+            barrel_spacing : 0.0,
+            center_offset : 40.0
+        }
+    }
+
+    fn extended_barrels(mut self, num : u16, spacing : f32) -> Self {
+        self.barrels += num;
+        self.barrel_spacing = spacing;
+        self
+    }
+
+    fn offset(mut self, off : f32) -> Self {
+        self.center_offset = off;
+        self
     }
 }
 
@@ -355,16 +458,28 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
                 else {
                     gun.tick = gun.repeat_cd;
                 }
-                match gun.bullets {
-                    Bullets::MinorBullet(range) => {
-                        let mut transform = position.clone();
-                        let ang = transform.rotation.to_euler(EulerRot::ZYX).0;
-                        transform.translation += (Vec2::from_angle(ang) * 40.0).extend(0.0);
-                        let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 400.0), TransformBundle::from(transform), Damping {
-                            linear_damping : 0.0,
-                            angular_damping : 0.0
-                        }, TimeToLive { lifetime : range }, Bullet {}, ActiveEvents::COLLISION_EVENTS));
-                        let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), BULLET_TYPE_NUM));
+                let ang = position.rotation.to_euler(EulerRot::ZYX).0;
+                let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 400.0);
+
+                for barrel in 0..gun.barrels {
+                    let mut transform = position.clone();
+                    transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
+                    transform.translation += (Vec2::from_angle(ang).perp() * gun.barrel_spacing * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5)).extend(0.0);
+                    match gun.bullets {
+                        Bullets::MinorBullet(range) => {
+                            let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
+                                linear_damping : 0.0,
+                                angular_damping : 0.0
+                            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
+                            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), BULLET_TYPE_NUM));
+                        },
+                        Bullets::Bomb(explosion, range) => {
+                            let piece = commands.spawn((GamePiece::new(SMALL_BOMB_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
+                                linear_damping : 0.0,
+                                angular_damping : 0.0
+                            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
+                            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), SMALL_BOMB_TYPE_NUM));
+                        }
                     }
                 }
             }
@@ -374,14 +489,24 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
 }
 
 
-fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>, broadcast : ResMut<Sender>) {
-    for (entity, mut ttl) in expirees.iter_mut() {
+fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive, Option<&Bullet>, Option<&Transform>)>, broadcast : ResMut<Sender>, mut explosions : EventWriter<ExplosionEvent>) {
+    for (entity, mut ttl, bullet, transform) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
+            if let Some(bullet) = bullet {
+                if let Some(pos) = transform {
+                    if let Bullets::Bomb(explosion, _) = bullet.tp {
+                        explosions.send(ExplosionEvent {
+                            x : pos.translation.x,
+                            y : pos.translation.y,
+                            props : explosion
+                        });
+                    }
+                }
+            }
             commands.entity(entity).despawn();
             if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity.index())) {
                 println!("game engine lost connection to webserver. this is probably not critical.");
             }
-
         }
         else {
             ttl.lifetime -= 1;
@@ -390,13 +515,13 @@ fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>,
 }
 
 
-fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>, mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
+fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>, mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, &Transform)>, explosions : Query<(Entity, &ExplosionProperties)>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>, mut explosion_event : EventWriter<ExplosionEvent>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
-            if let Ok((_, piece_one, bullet_one)) = pieces.get(*one) {
-                if let Ok((_, piece_two, bullet_two)) = pieces.get(*two) {
+            if let Ok((_, piece_one, bullet_one, _)) = pieces.get(*one) {
+                if let Ok((_, piece_two, bullet_two, _)) = pieces.get(*two) {
                     if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
                         two_dmg = piece_one.health;
                         one_dmg = piece_one.health;
@@ -407,8 +532,27 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                     }
                 }
             }
+            if let Ok((exp_entity, explosion)) = explosions.get(*one) {
+                if let Ok((entity, piece, _, _)) = pieces.get(*two) {
+                    two_dmg += explosion.damage;
+                }
+            }
+            if let Ok((exp_entity, explosion)) = explosions.get(*two) {
+                if let Ok((entity, piece, _, _)) = pieces.get(*one) {
+                    one_dmg += explosion.damage;
+                }
+            }
             if one_dmg != 0.0 {
-                if let Ok((entity_one, mut piece_one, _)) = pieces.get_mut(*one) {
+                if let Ok((entity_one, mut piece_one, bullet_one, pos)) = pieces.get_mut(*one) {
+                    if let Some(bullet) = bullet_one {
+                        if let Bullets::Bomb(explosion, _) = bullet.tp {
+                            explosion_event.send(ExplosionEvent {
+                                x : pos.translation.x,
+                                y : pos.translation.y,
+                                props : explosion
+                            });
+                        }
+                    }
                     piece_one.health -= one_dmg;
                     if piece_one.health <= 0.0 {
                         if piece_one.type_indicator == CASTLE_TYPE_NUM {
@@ -423,7 +567,16 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                 }
             }
             if two_dmg != 0.0 {
-                if let Ok((entity_two, mut piece_two, _)) = pieces.get_mut(*two) {
+                if let Ok((entity_two, mut piece_two, bullet_two, pos)) = pieces.get_mut(*two) {
+                    if let Some(bullet) = bullet_two {
+                        if let Bullets::Bomb(explosion, _) = bullet.tp {
+                            explosion_event.send(ExplosionEvent {
+                                x : pos.translation.x,
+                                y : pos.translation.y,
+                                props : explosion
+                            });
+                        }
+                    }
                     piece_two.health -= two_dmg;
                     if piece_two.health <= 0.0 {
                         if piece_two.type_indicator == CASTLE_TYPE_NUM {
@@ -441,11 +594,6 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
     }
 }
 
-
-#[derive(Event)]
-struct NewClientEvent {
-    id : u64
-}
 
 struct Placer<'a> (EventWriter<'a, PlaceEvent>);
 
@@ -482,6 +630,36 @@ impl Placer<'_> {
         });
     }
 
+    fn sniper(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a,
+            owner : client,
+            slot,
+            tp : PlaceType::Sniper,
+            free : false
+        });
+    }
+
+    fn demolition_cruiser(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a,
+            owner : client,
+            slot,
+            tp : PlaceType::DemolitionCruiser,
+            free : false
+        });
+    }
+
+    fn battleship(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a,
+            owner : client,
+            slot,
+            tp : PlaceType::Battleship,
+            free : false
+        });
+    }
+
     fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
         self.0.send(PlaceEvent {
             x, y, a,
@@ -493,11 +671,20 @@ impl Placer<'_> {
     }
 }
 
-fn nanor(thing : f32, or : f32) -> f32 {
-    if thing.is_nan() {
-        return or;
+
+fn boom(mut commands : Commands, mut explosions : EventReader<ExplosionEvent>, sender : ResMut<Sender>) { // manage explosions
+    // explosions are really just sensored colliders with an explosionproperties
+    for explosion in explosions.read() {
+        let _ = sender.send(ServerMessage::Explosion(explosion.x, explosion.y, explosion.props.radius, explosion.props.damage));
+        commands.spawn((RigidBody::Dynamic, explosion.props, Collider::cuboid(explosion.props.radius, explosion.props.radius), TransformBundle::from(Transform::from_xyz(explosion.x, explosion.y, 0.0)), ActiveEvents::COLLISION_EVENTS));
     }
-    return thing;
+}
+
+
+fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &ExplosionProperties)>) { // must come BEFORE boom (so it's always on the tick afterwards)
+    for (entity, _) in explosions.iter() {
+        commands.entity(entity).despawn();
+    }
 }
 
 
@@ -513,7 +700,7 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
             let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
             if (gpos - cpos).length() > 15.0 {
                 impulse.impulse = if loopify(cangle, (gpos - cpos).to_angle()).abs() < PI / 6.0 {
-                    Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, ship.speed * 3.3)
+                    Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, ship.speed * 10.0 * ship.acc_profile)
                 }
                 else {
                     Vec2::ZERO
@@ -595,7 +782,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                 },
                                 ClientMessage::PlacePiece(x, y, t) => {
                                     if t == CASTLE_TYPE_NUM {
-                                        if (!state.playing || state.io) {
+                                        if !state.playing || state.io {
                                             if clients[&id].has_placed_castle {
                                                 println!("client attempted to place an extra castle. dropping.");
                                                 kill = true;
@@ -619,7 +806,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                                     state.currently_playing += 1;
                                                     clients.get_mut(&id).unwrap().has_placed_castle = true;
                                                     clients.get_mut(&id).unwrap().alive = true;
-                                                    clients.get_mut(&id).unwrap().collect(100);
+                                                    clients.get_mut(&id).unwrap().collect(400);
                                                     let slot = clients[&id].slot;
                                                     place.castle(x, y, id, slot);
                                                     place.basic_fighter_free(x - 200.0, y, PI, id, slot);
@@ -641,6 +828,21 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             TIE_FIGHTER_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(20) {
                                                     place.tie_fighter(x, y, 0.0, id, slot);
+                                                }
+                                            },
+                                            SNIPER_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(30) {
+                                                    place.sniper(x, y, 0.0, id, slot);
+                                                }
+                                            },
+                                            DEMOLITION_CRUISER_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(60) {
+                                                    place.demolition_cruiser(x, y, 0.0, id, slot);
+                                                }
+                                            },
+                                            BATTLESHIP_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(200) {
+                                                    place.battleship(x, y, 0.0, id, slot);
                                                 }
                                             }
                                             _ => {
@@ -830,18 +1032,10 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
 enum PlaceType {
     BasicFighter,
     Castle,
-    TieFighter
-}
-
-#[derive(Event)]
-struct PlaceEvent {
-    x : f32,
-    y : f32,
-    a : f32,
-    owner : u64,
-    slot : u8,
-    tp : PlaceType,
-    free : bool // do we need to fabber check this one? if free is set to true, fabber and territory checks are skipped
+    TieFighter,
+    Sniper,
+    DemolitionCruiser,
+    Battleship
 }
 
 fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
@@ -911,6 +1105,21 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 piece.insert((Collider::cuboid(20.0, 25.0), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::basic_repeater(2)));
                 health = 3.0;
                 TIE_FIGHTER_TYPE_NUM
+            },
+            PlaceType::Sniper => {
+                piece.insert((Collider::cuboid(30.0, 15.0), PathFollower::start(ev.x, ev.y), Ship::fast(), Gun::sniper()));
+                health = 3.0;
+                SNIPER_TYPE_NUM
+            },
+            PlaceType::DemolitionCruiser => {
+                piece.insert((Collider::cuboid(20.0, 20.0), PathFollower::start(ev.x, ev.y), Ship::slow(), Gun::bomber()));
+                health = 3.0;
+                DEMOLITION_CRUISER_TYPE_NUM
+            },
+            PlaceType::Battleship => {
+                piece.insert((Collider::cuboid(75.0, 100.0), PathFollower::start(ev.x, ev.y), Ship::slow(), Gun::mediocre().extended_barrels(4, 40.0).offset(90.0)));
+                health = 12.0;
+                BATTLESHIP_TYPE_NUM
             }
         };
         piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));
@@ -922,13 +1131,6 @@ fn setup(mut state : ResMut<GameState>, config : Res<GameConfig>) {
     // todo: construct board (walls, starting rubble, etc)
     state.tick = 0;
     state.time_in_stage = config.wait_period;
-}
-
-
-#[derive(Event)]
-struct ClientKilledEvent { // something happened that could have killed a client
-    // we'll healthcheck to see if the client actually died and update game state accordingly
-    client : u64
 }
 
 
@@ -999,6 +1201,8 @@ struct Receiver(mpsc::Receiver<Comms>);
 #[derive(Resource, Deref, DerefMut)]
 struct Sender(broadcast::Sender<ServerMessage>);
 
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PhysicsSchedule;
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PlaySchedule;
@@ -1007,6 +1211,7 @@ pub struct PlaySchedule;
 fn run_play_schedule(world : &mut World) {
     let state = world.get_resource::<GameState>().expect("gamestate resource not loaded!");
     if state.playing && !state.strategy {
+        world.run_schedule(PhysicsSchedule);
         world.run_schedule(PlaySchedule);
     }
 }
@@ -1148,9 +1353,8 @@ async fn main() {
     App::new()
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().with_default_system_setup(false))
         .add_systems(
-            PlaySchedule,
+            PhysicsSchedule,
             (
-                move_ships, shoot, ttl,
                 RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::SyncBackend)
                     .in_set(PhysicsSet::SyncBackend),
                 RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::StepSimulation)
@@ -1159,8 +1363,15 @@ async fn main() {
                     .in_set(PhysicsSet::Writeback),
             ),
         )
+        .add_systems(
+            PlaySchedule,
+            (
+                move_ships, shoot, ttl
+            )
+        )
         .init_schedule(PlaySchedule)
-        .edit_schedule(PlaySchedule, |schedule| {
+        .init_schedule(PhysicsSchedule)
+        .edit_schedule(PhysicsSchedule, |schedule| {
             schedule.configure_sets((
                 PhysicsSet::SyncBackend,
                 PhysicsSet::StepSimulation,
@@ -1170,6 +1381,7 @@ async fn main() {
         .add_event::<NewClientEvent>()
         .add_event::<ClientKilledEvent>()
         .add_event::<PlaceEvent>()
+        .add_event::<ExplosionEvent>()
         .insert_resource(config)
         .insert_resource(ClientMap(HashMap::new()))
         .add_plugins(bevy_time::TimePlugin)
@@ -1198,7 +1410,7 @@ async fn main() {
             send_objects,
             position_updates,
             frame_broadcast.before(position_updates),
-            make_thing,
+            make_thing, boom, explosion_clear.before(boom).after(handle_collisions),
             handle_collisions,
             client_health_check.before(handle_collisions))) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, setup)

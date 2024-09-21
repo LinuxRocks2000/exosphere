@@ -80,6 +80,10 @@ var slot = 0;
 
 var clients = {}; // managed list of clients in the room
 
+var explosions = []; // explosions are pushed into this array periodically
+var explosions_swap = []; // every tick, all the explosions in explosions_swap are cleared, and all the explosions in explosions are moved into explosions_swap
+// this means that, regardless of when the actual explosion occurs, all explosions are guaranteed at least one frame of visibility
+
 function onresize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -139,6 +143,18 @@ function mainloop() {
     background_overlay(window.innerWidth / 2 - viewX, window.innerHeight / 2 + viewY, gameboardWidth, gameboardHeight, pieces, active_fabbers, active_territories);
     mouseX = viewX + rawMX - window.innerWidth / 2;
     mouseY = viewY + rawMY - window.innerHeight / 2;
+    if (keysDown["ArrowUp"]) {
+        viewY -= 30;
+    }
+    if (keysDown["ArrowDown"]) {
+        viewY += 30;
+    }
+    if (keysDown["ArrowLeft"]) {
+        viewX -= 30;
+    }
+    if (keysDown["ArrowRight"]) {
+        viewX += 30;
+    }
     if (mouseX < 0) {
         mouseX = 0;
     }
@@ -190,6 +206,19 @@ function mainloop() {
         }
         else if (item.type == 3) {
             ctx.drawImage(getRes("tie_fighter_" + fString), -20, -25);
+        }
+        else if (item.type == 4) {
+            ctx.drawImage(getRes("sniper_" + fString), -30, -15);
+        }
+        else if (item.type == 5) {
+            ctx.drawImage(getRes("demolition_cruiser_" + fString), -20, -20);
+        }
+        else if (item.type == 6) {
+            ctx.drawImage(getRes("battleship_" + fString), -75, -100);
+        }
+        else if (item.type == 7) {
+            ctx.fillStyle = "white";
+            ctx.fillRect(-5, -5, 10, 10);
         }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
@@ -297,7 +326,21 @@ function mainloop() {
         ctx.stroke();
     }
 
-    ctx.translate(-translateX, -translateY);
+    explosions.forEach(boom => {
+        ctx.beginPath();
+        ctx.fillStyle = "#CC0000";
+        ctx.arc(boom[0], boom[1], boom[2], 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    explosions_swap.forEach(boom => {
+        ctx.beginPath();
+        ctx.fillStyle = "#CC0000";
+        ctx.arc(boom[0], boom[1], boom[2], 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    ctx.resetTransform();
     requestAnimationFrame(mainloop);
 }
 
@@ -306,7 +349,7 @@ function canUpdateStrategy(obj) {
     if (obj.owner != m_id) {
         return false; // we can never move an object that isn't ours
     }
-    return [0, 3].indexOf(obj.type) != -1;
+    return [0, 3, 4, 5, 6].indexOf(obj.type) != -1;
 }
 
 function play() {
@@ -356,7 +399,10 @@ function play() {
                         }
                         var dx = proj[0] - mouseX;
                         var dy = proj[1] - mouseY;
-                        if (dx * dx + dy * dy < nearest_val) {
+                        let to_ship_dx = proj[0] - piece.x_n;
+                        let to_ship_dy = proj[1] - piece.y_n;
+                        let to_ship_d = Math.sqrt(to_ship_dx * to_ship_dx + to_ship_dy * to_ship_dy);
+                        if (dx * dx + dy * dy < nearest_val && to_ship_d > 15) {
                             nearest_val = dx * dx + dy * dy;
                             nearest_projection = proj;
                             nearest_index = i;
@@ -517,6 +563,8 @@ function play() {
         }
     });
     connection.onMessage("GameState", (byte, tick, totalTime) => {
+        explosions_swap = explosions;
+        explosions = [];
         lastFrameTime = window.performance.now();
         time_in_stage = totalTime;
         time_so_far = tick;
@@ -585,6 +633,9 @@ function play() {
         if (id == m_id) {
             money = amt;
         }
+    });
+    connection.onMessage("Explosion", (x, y, rad, dmg) => {
+        explosions.push([x, y, rad, dmg]);
     });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";

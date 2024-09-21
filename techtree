@@ -13,13 +13,13 @@ which can build anything; your forts, outposts, and farms have weaker fabber bay
 * Fighter <base type>: Small, somewhat-slow ship that fires one minor bullet per 30 play ticks. $10. Level 1.
 * Tie Fighter: Larger ship that moves at the same speed as a Fighter. Has a repeater weapon - fires minor bullets in a 25-5 repeater pattern. Slightly better range. $20. Level 1.
 * Sniper: Small, fast ship that fires one long-range bullet every 120 ticks. $30. Level 1.
-* Gunship: Small ship at the same speed as a Fighter. Fires minor bullets in a 25-5 repeater pattern, but aimed with the turret algorithm. Will not fire
-    without enemies in range; will friendly-fire. $60. Level 2.
-* Demolition Cruiser: Large, slow ship that fires a huge, long-range explosive bullet every 120 ticks. $60. Level 2.
+* Demolition Cruiser: Slow ship that fires a huge, long-range explosive bullet every 120 ticks. $60. Level 2.
+* Battleship: Extremely large ship that fires five bullets every 30 play ticks, distributed over its gigantic front surface. Moves a bit slower than basic fighters. Has a
+              ludicrously high health; basically a tank. $200. Level 3.
 
 [Economic] "Farm tools". $50/level.
 * Seed: grows into a chest when inside a farm-field. $5. Level 1.
-* Farmhouse: Projects a "farm field" - a 200 unit radius that matures seeds into chests. Actually a building, but more convenient under this category. $70. Level 2.
+* Farmhouse: Projects a "farm field" - a 200 unit radius that matures seeds into chests. Actually a building, but more convenient under this category. $70. Level 2. Upgradeable to autoplace.
 * Scrap ship: Not technically a ship as it does not fire bullets. Uses a laser to mine nearby chests, but will not fire if the laser would hit a friendly. $20. Level 2.
 
 [Defense] Defensive pieces are designed to prevent enemies from succesfully infiltrating your territory. Most defenses are closer to buildings than to ships,
@@ -33,6 +33,8 @@ which can build anything; your forts, outposts, and farms have weaker fabber bay
 * Smart Turret: Aims with the high-fidelity turret algorithm and fires a minor bullet every 20 play ticks. $100. Level 2.
 * Blast Turret: Aims with the high-fidelity turret algorithm and fires an explosive bullet every 30 play ticks. $150. Level 3.
 * Laser Turret: Fires a high-energy laser into any nearby enemy piece. $250. Level 3.
+* EMP Zone: energy weapon that deploys huge EMPs. EMPs destroy bullets in their range and also slow ships. Don't impede lasers at all. Useful to deploy on your own territory if
+            you have heavy laser defenses and aren't worrying about bullets; most enemy ships will be quickly foiled by them. $400. Level 4.
 
 [Buildings] Buildings are complex structures that are difficult or impossible to shift out of position. They can't be built by a fabber; they have to be
                 fabbed by a specialized constructor ship. $800/level.

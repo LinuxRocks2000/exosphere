@@ -284,6 +284,15 @@ const INCOMING_PROTOCOL = [
             'u64',
             'u32'
         ]
+    },
+    {
+        name: "Explosion",
+        layout: [
+            'f32', //x
+            'f32', //y
+            'f32', //r
+            'f32'  //d
+        ]
     }
 ];
 

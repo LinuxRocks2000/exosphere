@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="40"
+   height="40"
+   viewBox="0 0 10.583333 10.583333"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.3.2 (091e20ef0f, 2023-11-25)"
+   sodipodi:docname="demolition_cruiser_enemy.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="px"
+     inkscape:zoom="13.832853"
+     inkscape:cx="16.157188"
+     inkscape:cy="18.39823"
+     inkscape:window-width="1920"
+     inkscape:window-height="1011"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       id="rect2"
+       style="fill:#ff5800;stroke-width:2.94799;stroke-linecap:round;stroke-linejoin:round;fill-opacity:1"
+       d="M 3.0970328,3.5401702 H 9.1173103 V 6.9963598 H 3.0970328 L 1.8809632,5.188469 Z"
+       sodipodi:nodetypes="cccccc" />
+    <path
+       id="path1"
+       style="fill:#ff5800;stroke-width:2.94799;stroke-linecap:round;stroke-linejoin:round;fill-opacity:1"
+       d="M 3.1749979,6.7954222 H 8.9828431 L 10.583333,8.9114006 0,10.598218 Z"
+       sodipodi:nodetypes="ccccc" />
+    <path
+       id="path2"
+       style="fill:#ff5800;stroke-width:2.94799;stroke-linecap:round;stroke-linejoin:round;fill-opacity:1"
+       d="M 3.1749978,3.8027958 H 8.9828431 L 10.583333,1.6868174 0,0 Z"
+       sodipodi:nodetypes="ccccc" />
+  </g>
+</svg>
