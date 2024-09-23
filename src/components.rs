@@ -158,7 +158,7 @@ pub(crate) struct Seed {
 impl Seed {
     pub(crate) fn new() -> Self {
         Self {
-            time_to_grow : 600
+            time_to_grow : 100
         }
     }
 }
@@ -182,7 +182,8 @@ pub(crate) struct Gun {
     pub(crate) tick : u16, // current tick
     pub(crate) barrels : u16,
     pub(crate) barrel_spacing : f32,
-    pub(crate) center_offset : f32
+    pub(crate) center_offset : f32,
+    pub(crate) scatter_barrels : bool // randomly pick a single barrel to fire from every shot
 }
 
 
@@ -198,7 +199,8 @@ impl Gun {
             tick : 1,
             barrels : 1,
             barrel_spacing : 0.0,
-            center_offset : 40.0
+            center_offset : 40.0,
+            scatter_barrels : false
         }
     }
 
@@ -213,7 +215,8 @@ impl Gun {
             tick : 1,
             barrels : 1,
             barrel_spacing : 0.0,
-            center_offset : 40.0
+            center_offset : 40.0,
+            scatter_barrels : false
         }
     }
 
@@ -228,7 +231,8 @@ impl Gun {
             tick : 1,
             barrels : 1,
             barrel_spacing : 0.0,
-            center_offset : 40.0
+            center_offset : 40.0,
+            scatter_barrels : false
         }
     }
 
@@ -243,13 +247,18 @@ impl Gun {
             tick : 1,
             barrels : 1,
             barrel_spacing : 0.0,
-            center_offset : 40.0
+            center_offset : 40.0,
+            scatter_barrels : false
         }
     }
 
     pub(crate) fn extended_barrels(mut self, num : u16, spacing : f32) -> Self {
         self.barrels += num;
         self.barrel_spacing = spacing;
+        
+        self.scatter_barrels = true;
+        self.cd /= num;
+        
         self
     }
 

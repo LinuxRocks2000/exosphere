@@ -52,5 +52,6 @@ pub(crate) struct ExplosionEvent { // an explosion was initiated!
 
 #[derive(Event)]
 pub(crate) struct PieceDestroyedEvent {
-    pub(crate) piece : Entity
+    pub(crate) piece : Entity,
+    pub(crate) responsible : u64 // the client responsible for this destruction (== the owner of the piece that did fatal damage)
 }

@@ -31,6 +31,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use bevy::ecs::schedule::ScheduleLabel;
 use std::f32::consts::PI;
+use rand::Rng;
 
 pub mod protocol;
 use protocol::Protocol;
@@ -147,8 +148,33 @@ impl ExplosionProperties {
 }
 
 
-fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mut Gun)>, broadcast : ResMut<Sender>) {
-    for (position, velocity, mut gun) in pieces.iter_mut() {
+fn discharge_barrel(commands : &mut Commands, owner : u64, barrel : u16, gun : &Gun, position : &Transform, velocity : &Velocity, broadcast : &ResMut<Sender>) {
+    let ang = position.rotation.to_euler(EulerRot::ZYX).0;
+    let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 400.0);
+    let mut transform = position.clone();
+    transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
+    transform.translation += (Vec2::from_angle(ang).perp() * gun.barrel_spacing * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5)).extend(0.0);
+    match gun.bullets {
+        Bullets::MinorBullet(range) => {
+            let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
+                linear_damping : 0.0,
+                angular_damping : 0.0
+            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
+            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), BULLET_TYPE_NUM));
+        },
+        Bullets::Bomb(_, range) => {
+            let piece = commands.spawn((GamePiece::new(SMALL_BOMB_TYPE_NUM, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
+                linear_damping : 0.0,
+                angular_damping : 0.0
+            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
+            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), SMALL_BOMB_TYPE_NUM));
+        }
+    }
+}
+
+
+fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &GamePiece, &mut Gun)>, broadcast : ResMut<Sender>) {
+    for (position, velocity, piece, mut gun) in pieces.iter_mut() {
         if gun.enabled {
             if gun.tick == 0 {
                 gun.r_point += 1;
@@ -159,28 +185,12 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
                 else {
                     gun.tick = gun.repeat_cd;
                 }
-                let ang = position.rotation.to_euler(EulerRot::ZYX).0;
-                let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 400.0);
-
-                for barrel in 0..gun.barrels {
-                    let mut transform = position.clone();
-                    transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
-                    transform.translation += (Vec2::from_angle(ang).perp() * gun.barrel_spacing * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5)).extend(0.0);
-                    match gun.bullets {
-                        Bullets::MinorBullet(range) => {
-                            let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
-                                linear_damping : 0.0,
-                                angular_damping : 0.0
-                            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-                            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), BULLET_TYPE_NUM));
-                        },
-                        Bullets::Bomb(_, range) => {
-                            let piece = commands.spawn((GamePiece::new(SMALL_BOMB_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
-                                linear_damping : 0.0,
-                                angular_damping : 0.0
-                            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-                            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), SMALL_BOMB_TYPE_NUM));
-                        }
+                if gun.scatter_barrels {
+                    discharge_barrel(&mut commands, piece.owner, rand::thread_rng().gen_range(0..gun.barrels), &gun, position, velocity, &broadcast);
+                }
+                else {
+                    for barrel in 0..gun.barrels {
+                        discharge_barrel(&mut commands, piece.owner, barrel, &gun, position, velocity, &broadcast);
                     }
                 }
             }
@@ -193,7 +203,7 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
 fn ttl(mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
     for (entity, mut ttl) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
-            kill_event.send(PieceDestroyedEvent { piece : entity });
+            kill_event.send(PieceDestroyedEvent { piece : entity, responsible : 0 });
         }
         else {
             ttl.lifetime -= 1;
@@ -202,7 +212,7 @@ fn ttl(mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWr
 }
 
 
-fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Query<&GamePiece>, bullets : Query<(&Bullet, &Transform)>, mut events : EventReader<PieceDestroyedEvent>, mut explosions : EventWriter<ExplosionEvent>, mut client_kill : EventWriter<ClientKilledEvent>) {
+fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Query<&GamePiece>, bullets : Query<(&Bullet, &Transform)>, chests : Query<&Chest>, mut events : EventReader<PieceDestroyedEvent>, mut explosions : EventWriter<ExplosionEvent>, mut client_kill : EventWriter<ClientKilledEvent>, mut clients : ResMut<ClientMap>) {
     for evt in events.read() {
         if let Ok(piece) = pieces.get(evt.piece) {
             if let Ok((bullet, pos)) = bullets.get(evt.piece) {
@@ -212,6 +222,11 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
                         y : pos.translation.y,
                         props : explosion
                     });
+                }
+            }
+            if let Ok(chest) = chests.get(evt.piece) {
+                if let Some(mut cl) = clients.get_mut(&evt.responsible) {
+                    cl.collect(50); // kill the chest, collect some dough, that's life, yo!
                 }
             }
             if piece.type_indicator == CASTLE_TYPE_NUM {
@@ -235,14 +250,18 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
+            let mut one_killer : u64 = 0; // the id of the player that owned the piece that damaged the piece
+            let mut two_killer : u64 = 0; // that is one HELL of a sentence
             if let Ok((_, piece_one, bullet_one)) = pieces.get(*one) {
                 if let Ok((_, piece_two, bullet_two)) = pieces.get(*two) {
                     if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
                         two_dmg = piece_one.health;
+                        two_killer = piece_one.owner;
                         one_dmg = piece_one.health;
                     }
                     if bullet_two.is_some() {
                         one_dmg += piece_two.health;
+                        one_killer = piece_two.owner;
                         two_dmg += piece_one.health;
                     }
                 }
@@ -261,7 +280,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 if let Ok((entity_one, mut piece_one, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
                     if piece_one.health <= 0.0 {
-                        piece_destroy.send(PieceDestroyedEvent { piece : entity_one });
+                        piece_destroy.send(PieceDestroyedEvent { piece : entity_one, responsible : one_killer });
                     }
                 }
             }
@@ -269,7 +288,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 if let Ok((entity_two, mut piece_two, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
                     if piece_two.health <= 0.0 {
-                        piece_destroy.send(PieceDestroyedEvent { piece : entity_two });
+                        piece_destroy.send(PieceDestroyedEvent { piece : entity_two, responsible : two_killer });
                     }
                 }
             }
@@ -521,7 +540,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                                     state.currently_playing += 1;
                                                     clients.get_mut(&id).unwrap().has_placed_castle = true;
                                                     clients.get_mut(&id).unwrap().alive = true;
-                                                    clients.get_mut(&id).unwrap().collect(400);
+                                                    clients.get_mut(&id).unwrap().collect(100);
                                                     let slot = clients[&id].slot;
                                                     place.castle(x, y, id, slot);
                                                     place.basic_fighter_free(x - 200.0, y, PI, id, slot);
