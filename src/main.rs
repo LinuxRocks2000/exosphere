@@ -191,24 +191,10 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
 }
 
 
-fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive, Option<&Bullet>, Option<&Transform>)>, broadcast : ResMut<Sender>, mut explosions : EventWriter<ExplosionEvent>) {
-    for (entity, mut ttl, bullet, transform) in expirees.iter_mut() {
+fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
+    for (entity, mut ttl) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
-            if let Some(bullet) = bullet {
-                if let Some(pos) = transform {
-                    if let Bullets::Bomb(explosion, _) = bullet.tp {
-                        explosions.send(ExplosionEvent {
-                            x : pos.translation.x,
-                            y : pos.translation.y,
-                            props : explosion
-                        });
-                    }
-                }
-            }
-            commands.entity(entity).despawn();
-            if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity.index())) {
-                println!("game engine lost connection to webserver. this is probably not critical.");
-            }
+            kill_event.send(PieceDestroyedEvent { piece : entity });
         }
         else {
             ttl.lifetime -= 1;
@@ -217,13 +203,39 @@ fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive, O
 }
 
 
-fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>, mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, &Transform)>, explosions : Query<(Entity, &ExplosionProperties)>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>, mut explosion_event : EventWriter<ExplosionEvent>) {
+fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, mut pieces : Query<&GamePiece>, mut bullets : Query<(&Bullet, &Transform)>, mut events : EventReader<PieceDestroyedEvent>, mut explosions : EventWriter<ExplosionEvent>, mut client_kill : EventWriter<ClientKilledEvent>) {
+    for evt in events.read() {
+        if let Ok(piece) = pieces.get(evt.piece) {
+            if let Ok((bullet, pos)) = bullets.get(evt.piece) {
+                if let Bullets::Bomb(explosion, _) = bullet.tp {
+                    explosions.send(ExplosionEvent {
+                        x : pos.translation.x,
+                        y : pos.translation.y,
+                        props : explosion
+                    });
+                }
+            }
+            if piece.type_indicator == CASTLE_TYPE_NUM {
+                client_kill.send(ClientKilledEvent { client : piece.owner });
+            }
+            commands.entity(evt.piece).despawn();
+            if let Err(_) = broadcast.send(ServerMessage::DeleteObject(evt.piece.index())) {
+                println!("game engine lost connection to webserver. this is probably not critical.");
+            }
+        }
+    }
+}
+
+
+fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>,
+    mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, explosions : Query<(&ExplosionProperties)>,
+    broadcast : ResMut<Sender>, mut piece_destroy : EventWriter<PieceDestroyedEvent>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
-            if let Ok((_, piece_one, bullet_one, _)) = pieces.get(*one) {
-                if let Ok((_, piece_two, bullet_two, _)) = pieces.get(*two) {
+            if let Ok((_, piece_one, bullet_one)) = pieces.get(*one) {
+                if let Ok((_, piece_two, bullet_two)) = pieces.get(*two) {
                     if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
                         two_dmg = piece_one.health;
                         one_dmg = piece_one.health;
@@ -234,61 +246,29 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                     }
                 }
             }
-            if let Ok((_, explosion)) = explosions.get(*one) {
-                if let Ok((_, _, _, _)) = pieces.get(*two) {
+            if let Ok((explosion)) = explosions.get(*one) {
+                if let Ok((_, _, _)) = pieces.get(*two) {
                     two_dmg += explosion.damage;
                 }
             }
-            if let Ok((_, explosion)) = explosions.get(*two) {
-                if let Ok((_, _, _, _)) = pieces.get(*one) {
+            if let Ok((explosion)) = explosions.get(*two) {
+                if let Ok((_, _, _)) = pieces.get(*one) {
                     one_dmg += explosion.damage;
                 }
             }
             if one_dmg != 0.0 {
-                if let Ok((entity_one, mut piece_one, bullet_one, pos)) = pieces.get_mut(*one) {
-                    if let Some(bullet) = bullet_one {
-                        if let Bullets::Bomb(explosion, _) = bullet.tp {
-                            explosion_event.send(ExplosionEvent {
-                                x : pos.translation.x,
-                                y : pos.translation.y,
-                                props : explosion
-                            });
-                        }
-                    }
+                if let Ok((entity_one, mut piece_one, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
                     if piece_one.health <= 0.0 {
-                        if piece_one.type_indicator == CASTLE_TYPE_NUM {
-                            client_killed.send(ClientKilledEvent { client : piece_one.owner });
-                            println!("possible client kill");
-                        }
-                        commands.entity(entity_one).despawn();
-                        if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity_one.index())) {
-                            println!("game engine lost connection to webserver. this is probably not critical.");
-                        }
+                        piece_destroy.send(PieceDestroyedEvent { piece : entity_one });
                     }
                 }
             }
             if two_dmg != 0.0 {
-                if let Ok((entity_two, mut piece_two, bullet_two, pos)) = pieces.get_mut(*two) {
-                    if let Some(bullet) = bullet_two {
-                        if let Bullets::Bomb(explosion, _) = bullet.tp {
-                            explosion_event.send(ExplosionEvent {
-                                x : pos.translation.x,
-                                y : pos.translation.y,
-                                props : explosion
-                            });
-                        }
-                    }
+                if let Ok((entity_two, mut piece_two, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
                     if piece_two.health <= 0.0 {
-                        if piece_two.type_indicator == CASTLE_TYPE_NUM {
-                            client_killed.send(ClientKilledEvent { client : piece_two.owner });
-                            println!("possible client kill");
-                        }
-                        commands.entity(entity_two).despawn();
-                        if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity_two.index())) {
-                            println!("game engine lost connection to webserver. this is probably not critical.");
-                        }
+                        piece_destroy.send(PieceDestroyedEvent { piece : entity_two });
                     }
                 }
             }
@@ -412,7 +392,7 @@ fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &Explosi
 
 fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, mut place : EventWriter<PlaceEvent>) {
     let mut place = Placer(place);
-    for (entity, transform, mut seed) in seeds.iter() {
+    for (entity, transform, mut seed) in seeds.iter_mut() {
         seed.time_to_grow -= 1;
         if seed.time_to_grow == 0 {
             commands.entity(entity).despawn();
@@ -1131,6 +1111,7 @@ async fn main() {
         .add_event::<ClientKilledEvent>()
         .add_event::<PlaceEvent>()
         .add_event::<ExplosionEvent>()
+        .add_event::<PieceDestroyedEvent>()
         .insert_resource(config)
         .insert_resource(ClientMap(HashMap::new()))
         .add_plugins(bevy_time::TimePlugin)
@@ -1161,7 +1142,9 @@ async fn main() {
             frame_broadcast.before(position_updates),
             make_thing, boom, explosion_clear.before(boom).after(handle_collisions),
             handle_collisions,
-            client_health_check.before(handle_collisions))) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
+            client_health_check.before(handle_collisions),
+            on_piece_dead.after(handle_collisions).after(seed_mature).after(ttl)
+        )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, setup)
         .set_runner(|mut app| {
             loop {

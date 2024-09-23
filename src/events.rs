@@ -13,6 +13,7 @@
 // event structures. NOT event handlers.
 
 use bevy::prelude::Event;
+use bevy::prelude::Entity;
 use crate::PlaceType;
 use crate::ExplosionProperties;
 
@@ -46,4 +47,10 @@ pub struct ExplosionEvent { // an explosion was initiated!
     pub x : f32,
     pub y : f32,
     pub props : ExplosionProperties
+}
+
+
+#[derive(Event)]
+pub struct PieceDestroyedEvent {
+    pub piece : Entity
 }

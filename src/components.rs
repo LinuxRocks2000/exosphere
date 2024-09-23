@@ -99,7 +99,8 @@ impl Fabber {
             PlaceType::Sniper => self.l_ships >= 1,
             PlaceType::DemolitionCruiser => self.l_ships >= 2,
             PlaceType::Battleship => self.l_ships >= 3,
-            PlaceType::Seed => self.l_econ >= 1
+            PlaceType::Seed => self.l_econ >= 1,
+            PlaceType::Chest => false // fabbers can never place chests
         }
     }
 }
