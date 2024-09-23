@@ -20,22 +20,22 @@ use crate::PlaceType;
 
 
 #[derive(Component)]
-pub struct GamePiece {
-    pub type_indicator : u16, // the type indicator sent to the client
+pub(crate) struct GamePiece {
+    pub(crate) type_indicator : u16, // the type indicator sent to the client
     // assigned by the gamepiece builder functions
     // todo: do this a better way
-    pub owner : u64, // entry in the Clients hashmap
-    pub slot : u8, // identity slot of the owner
+    pub(crate) owner : u64, // entry in the Clients hashmap
+    pub(crate) slot : u8, // identity slot of the owner
     // in the future, we may want to eliminate this and instead do lookups in the HashMap (which is swisstable, so it's pretty fast)
     // but for now it's convenient
-    pub last_update_pos : Vec2,
-    pub last_update_ang : f32,
-    pub health : f32
+    pub(crate) last_update_pos : Vec2,
+    pub(crate) last_update_ang : f32,
+    pub(crate) health : f32
 }
 
 
 impl GamePiece {
-    pub fn new(type_indicator : u16, owner : u64, slot : u8, health : f32) -> Self {
+    pub(crate) fn new(type_indicator : u16, owner : u64, slot : u8, health : f32) -> Self {
         Self {
             type_indicator,
             owner,
@@ -52,13 +52,13 @@ impl GamePiece {
 
 
 #[derive(Component)]
-pub struct Territory { // a territory control radius produced by a castle or fort.
-    pub radius : f32
+pub(crate) struct Territory { // a territory control radius produced by a castle or fort.
+    pub(crate) radius : f32
 }
 
 
 impl Territory {
-    pub fn castle() -> Self { // TODO: make this meaningful
+    pub(crate) fn castle() -> Self { // TODO: make this meaningful
         Self {
             radius : 600.0
         }
@@ -67,19 +67,19 @@ impl Territory {
 
 
 #[derive(Component)]
-pub struct Fabber { // a fabber bay with a radius
-    pub radius : f32,
-    pub l_missiles : u8,
-    pub l_ships : u8,
-    pub l_econ : u8,
-    pub l_defense : u8,
-    pub l_buildings : u8
+pub(crate) struct Fabber { // a fabber bay with a radius
+    pub(crate) radius : f32,
+    pub(crate) l_missiles : u8,
+    pub(crate) l_ships : u8,
+    pub(crate) l_econ : u8,
+    pub(crate) l_defense : u8,
+    pub(crate) l_buildings : u8
 }
 
 
 
 impl Fabber {
-    pub fn castle() -> Self {
+    pub(crate) fn castle() -> Self {
         Self { // Large-M4S2E2D3B2
             radius : 500.0,
             l_missiles : 4,
@@ -90,7 +90,7 @@ impl Fabber {
         }
     }
 
-    pub fn is_available(&self, tp : PlaceType) -> bool { // determine if this fabber can produce an object given its numerical identifier
+    pub(crate) fn is_available(&self, tp : PlaceType) -> bool { // determine if this fabber can produce an object given its numerical identifier
         match tp {
             PlaceType::BasicFighter => self.l_ships >= 1,
             PlaceType::TieFighter => self.l_ships >= 1,
@@ -106,28 +106,28 @@ impl Fabber {
 
 
 #[derive(Component)]
-pub struct Ship {
-    pub speed : f32,
-    pub acc_profile : f32 // in percentage of speed
+pub(crate) struct Ship {
+    pub(crate) speed : f32,
+    pub(crate) acc_profile : f32 // in percentage of speed
 }
 
 
 impl Ship {
-    pub fn normal() -> Self {
+    pub(crate) fn normal() -> Self {
         return Self {
             speed : 16.0,
             acc_profile : 0.33
         }
     }
 
-    pub fn fast() -> Self {
+    pub(crate) fn fast() -> Self {
         return Self {
             speed : 32.0,
             acc_profile : 0.5
         }
     }
 
-    pub fn slow() -> Self {
+    pub(crate) fn slow() -> Self {
         return Self {
             speed : 12.0,
             acc_profile : 0.33
@@ -137,26 +137,26 @@ impl Ship {
 
 
 #[derive(Component)]
-pub struct TimeToLive {
-    pub lifetime : u16
+pub(crate) struct TimeToLive {
+    pub(crate) lifetime : u16
 }
 
 
 #[derive(Component)]
-pub struct Bullet {
-    pub tp : Bullets
+pub(crate) struct Bullet {
+    pub(crate) tp : Bullets
 } // bullet collision semantics
 // normal collisions between entities are only destructive if greater than a threshold
 // bullet collisions are always destructive
 
 
 #[derive(Component)]
-pub struct Seed {
-    pub time_to_grow : u16 // remaining time before this seed sprouts
+pub(crate) struct Seed {
+    pub(crate) time_to_grow : u16 // remaining time before this seed sprouts
 }
 
 impl Seed {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             time_to_grow : 600
         }
@@ -165,29 +165,29 @@ impl Seed {
 
 
 #[derive(Component)]
-pub struct Chest {}
+pub(crate) struct Chest {}
 
 
 #[derive(Component)]
-pub struct Gun {
-    pub enabled : bool,
-    pub cd : u16, // cooldown ticks between shots
-    pub bullets : Bullets,
-    pub repeats : u16, // number of repeater shots
-    pub repeat_cd : u16, // time between repeater shots
+pub(crate) struct Gun {
+    pub(crate) enabled : bool,
+    pub(crate) cd : u16, // cooldown ticks between shots
+    pub(crate) bullets : Bullets,
+    pub(crate) repeats : u16, // number of repeater shots
+    pub(crate) repeat_cd : u16, // time between repeater shots
     // state fields (don't touch):
-    pub r_point : u16, // current repeater position
+    pub(crate) r_point : u16, // current repeater position
     // the repeat pattern is pretty simple. when a bullet is fired, r_point is incremented by one, and if it's less than the number of repeats, `tick` is set to
     // repeat_cd instead of cd. when r_point >= repeats, r_point = 0 and tick = cd.
-    pub tick : u16, // current tick
-    pub barrels : u16,
-    pub barrel_spacing : f32,
-    pub center_offset : f32
+    pub(crate) tick : u16, // current tick
+    pub(crate) barrels : u16,
+    pub(crate) barrel_spacing : f32,
+    pub(crate) center_offset : f32
 }
 
 
 impl Gun {
-    pub fn mediocre() -> Self {
+    pub(crate) fn mediocre() -> Self {
         Self {
             enabled : true,
             cd : 20,
@@ -202,7 +202,7 @@ impl Gun {
         }
     }
 
-    pub fn basic_repeater(repeats : u16) -> Self {
+    pub(crate) fn basic_repeater(repeats : u16) -> Self {
         Self {
             enabled : true,
             cd : 25,
@@ -217,7 +217,7 @@ impl Gun {
         }
     }
 
-    pub fn sniper() -> Self {
+    pub(crate) fn sniper() -> Self {
         Self {
             enabled : true,
             cd : 150,
@@ -232,7 +232,7 @@ impl Gun {
         }
     }
 
-    pub fn bomber() -> Self {
+    pub(crate) fn bomber() -> Self {
         Self {
             enabled : true,
             cd : 120,
@@ -247,13 +247,13 @@ impl Gun {
         }
     }
 
-    pub fn extended_barrels(mut self, num : u16, spacing : f32) -> Self {
+    pub(crate) fn extended_barrels(mut self, num : u16, spacing : f32) -> Self {
         self.barrels += num;
         self.barrel_spacing = spacing;
         self
     }
 
-    pub fn offset(mut self, off : f32) -> Self {
+    pub(crate) fn offset(mut self, off : f32) -> Self {
         self.center_offset = off;
         self
     }

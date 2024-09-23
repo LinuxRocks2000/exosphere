@@ -174,7 +174,7 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
                             }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
                             let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), BULLET_TYPE_NUM));
                         },
-                        Bullets::Bomb(explosion, range) => {
+                        Bullets::Bomb(_, range) => {
                             let piece = commands.spawn((GamePiece::new(SMALL_BOMB_TYPE_NUM, 0, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
                                 linear_damping : 0.0,
                                 angular_damping : 0.0
@@ -190,7 +190,7 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
 }
 
 
-fn ttl(commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
+fn ttl(mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
     for (entity, mut ttl) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
             kill_event.send(PieceDestroyedEvent { piece : entity });
@@ -226,9 +226,11 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
 }
 
 
-fn handle_collisions(commands : Commands, mut collision_events: EventReader<CollisionEvent>,
-    mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, explosions : Query<&ExplosionProperties>,
-    broadcast : ResMut<Sender>, mut piece_destroy : EventWriter<PieceDestroyedEvent>) {
+fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
+        mut pieces : Query<(Entity,
+        &mut GamePiece, Option<&Bullet>)>,
+        explosions : Query<&ExplosionProperties>,
+        mut piece_destroy : EventWriter<PieceDestroyedEvent>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
@@ -476,7 +478,7 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                         let mut kill = false;
                         if clients.contains_key(&id) {
                             match msg {
-                                ClientMessage::Connect(banner, password) => {
+                                ClientMessage::Connect(banner, _password) => { // TODO: IMPLEMENT PASSWORD
                                     let slot : u8 = if state.currently_attached_players < config.max_player_slots { 1 } else { 0 }; // todo: implement teams
                                     for k in clients.keys() {
                                         if *k != id {
@@ -862,7 +864,7 @@ fn setup(mut state : ResMut<GameState>, config : Res<GameConfig>) {
 }
 
 
-fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>, broadcast : ResMut<Sender>) {
+fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>) {
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
     // * if the client has any remaining Territory, it's not dead, false alarm
@@ -901,7 +903,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
                         break;
                     }
                 }
-                for (id, client) in clients.iter() {
+                for (_, client) in clients.iter() {
                     client.send(ServerMessage::Winner(winid));
                     client.send(ServerMessage::Disconnect);
                 }

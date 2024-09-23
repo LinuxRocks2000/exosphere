@@ -46,7 +46,7 @@ pub enum ClientMessage { // client -> server
 // If a client attempts to do anything before protocol verification, it will be kicked off the server.
 
 #[derive(Debug, ProtocolRoot, Clone)]
-pub enum ServerMessage { // server -> client
+pub(crate) enum ServerMessage { // server -> client
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. see above blurb.
     GameState(u8, u16, u16), // game state, stage tick, stage total time
     // this is just 5 bytes - quite acceptable to send to every client every frame, much lower overhead than even ObjectMove.
@@ -78,7 +78,7 @@ pub enum ServerMessage { // server -> client
 }
 
 
-pub enum Comms { // webserver -> game engine
+pub(crate) enum Comms { // webserver -> game engine
     ClientConnect(Client), // (client) a client connected
     ClientDisconnect(u64), // (id) a client disconnected
     MessageFrom(u64, ClientMessage) // (id, message) a client sent a message that was successfully decoded and filtered
