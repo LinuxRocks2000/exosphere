@@ -372,6 +372,16 @@ impl Placer<'_> {
         });
     }
 
+    fn farmhouse(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a : 0.0,
+            owner,
+            slot,
+            tp : PlaceType::Farmhouse,
+            free : false
+        });
+    }
+
     fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
         self.0.send(PlaceEvent {
             x, y, a,
@@ -580,8 +590,13 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                                 }
                                             }
                                             SEED_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(10) {
+                                                if clients.get_mut(&id).unwrap().charge(5) {
                                                     place.seed(x, y, id, slot);
+                                                }
+                                            }
+                                            FARMHOUSE_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(70) {
+                                                    place.farmhouse(x, y, id, slot);
                                                 }
                                             }
                                             _ => {
@@ -776,7 +791,8 @@ enum PlaceType {
     DemolitionCruiser,
     Battleship,
     Seed,
-    Chest
+    Chest,
+    Farmhouse
 }
 
 fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
@@ -869,6 +885,11 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 piece.insert((Collider::cuboid(10.0, 10.0), Chest{}));
                 health = 1.0;
                 CHEST_TYPE_NUM
+            },
+            PlaceType::Farmhouse => {
+                piece.insert((Collider::cuboid(25.0, 25.0), Farmhouse::new()));
+                health = 2.0;
+                FARMHOUSE_TYPE_NUM
             }
         };
         piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));

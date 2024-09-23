@@ -50,18 +50,24 @@ body > * {
 
 #buyshipmenu {
     margin: 10px;
-    border-radius: 100vw;
+    border-radius: 15px;
     background-color: rgb(57, 57, 77);
     display: inline-flex;
     flex-direction: column;
-    padding: 10px;
+    width: 90px;
+    overflow: visible;
 }
 
 #buyshipmenu > div {
-    max-width: 50px;
+    max-width: 70px;
+    width: max-content;
     display: flex;
     transition: max-width 0.3s;
     overflow: hidden;
+    border-radius: 15px;
+    background-color: rgb(57, 57, 77);
+    padding: 20px;
+    box-sizing: border-box;
 }
 
 #buyshipmenu > div:hover, #buyshipmenu > div:has(div > input:checked) {

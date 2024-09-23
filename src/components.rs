@@ -99,7 +99,8 @@ impl Fabber {
             PlaceType::DemolitionCruiser => self.l_ships >= 2,
             PlaceType::Battleship => self.l_ships >= 3,
             PlaceType::Seed => self.l_econ >= 1,
-            PlaceType::Chest => false // fabbers can never place chests
+            PlaceType::Chest => false, // fabbers can never place chests
+            PlaceType::Farmhouse => self.l_econ >= 2
         }
     }
 }
@@ -158,7 +159,7 @@ pub(crate) struct Seed {
 impl Seed {
     pub(crate) fn new() -> Self {
         Self {
-            time_to_grow : 100
+            time_to_grow : 600
         }
     }
 }
@@ -265,5 +266,19 @@ impl Gun {
     pub(crate) fn offset(mut self, off : f32) -> Self {
         self.center_offset = off;
         self
+    }
+}
+
+
+#[derive(Component)]
+pub(crate) struct Farmhouse {
+    pub(crate) radius : f32
+}
+
+impl Farmhouse {
+    pub fn new() -> Self {
+        Self {
+            radius : 200.0
+        }
     }
 }

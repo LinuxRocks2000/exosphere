@@ -19,7 +19,12 @@ which can build anything; your forts, outposts, and farms have weaker fabber bay
 
 [Economic] "Farm tools". $50/level.
 * Seed: grows into a chest when inside a farm-field. $5. Level 1.
-* Farmhouse: Projects a "farm field" - a 200 unit radius that matures seeds into chests. Actually a building, but more convenient under this category. $70. Level 2. Upgradeable to autoplace.
+* Farmhouse: Projects a "farm field" - a 200 unit radius that matures seeds into chests. $70. Level 2. Upgradeable to 
+             autoplace. Note the implication that, for a solid economy, players will want to place nothing but a farmhouse and six seeds on their first turn! Any less
+             will impair their economy throughout the entire game. This leads to a complex balance with missile swarms: if you don't care about building a solid economy, you can
+             place just a farmhouse and a single seed, and spend the remaining $25 on missiles - or even forego the economy to afford a much larger missile attack. This is a gambit-style play; if your swarm fails to do significant damage, you will
+             quickly find yourself at the mercy of a much stronger opponent, struggling to build fighters while they amp up their laser defenses and prepare large
+             invasion fleets.
 * Scrap ship: Not technically a ship as it does not fire bullets. Uses a laser to mine nearby chests, but will not fire if the laser would hit a friendly. $20. Level 2.
 
 [Defense] Defensive pieces are designed to prevent enemies from succesfully infiltrating your territory. Most defenses are closer to buildings than to ships,

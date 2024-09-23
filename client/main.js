@@ -188,6 +188,15 @@ function mainloop() {
 
     hovered = undefined;
     for (item of Object.values(pieces)) {
+        if (item.type == 10) {
+            ctx.beginPath();
+            ctx.strokeStyle = "blue";
+            ctx.lineWidth = 2;
+            ctx.arc(item.x_n, item.y_n, 200.0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+    for (item of Object.values(pieces)) {
         var fString = isFriendly(item.owner) ? "friendly" : "enemy";
         var x = item.x_n * delta + item.x_o * inv_delta;
         var y = item.y_n * delta + item.y_o * inv_delta;
@@ -225,6 +234,9 @@ function mainloop() {
         }
         else if (item.type == 9) {
             ctx.drawImage(getRes("chest"), -10, -10);
+        }
+        else if (item.type == 10) {
+            ctx.drawImage(getRes("farmhouse"), -25, -25);
         }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
