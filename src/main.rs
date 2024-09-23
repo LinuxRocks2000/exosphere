@@ -47,82 +47,14 @@ use pathfollower::*;
 pub mod events;
 use events::*;
 
+pub mod consts;
+use consts::*;
 
-const UPDATE_RATE : u64 = 30; // 30hz by default
-const FRAME_TIME : std::time::Duration = std::time::Duration::from_millis(1000 / UPDATE_RATE); // milliseconds per frame
+pub mod comms;
+use comms::*;
 
-const MAX_FRAME_SIZE : usize = 1024; // maximum size of an incoming websocket frame
-
-const VERSION : u8 = 0; // bump this up every time a major change is made
-
-const BASIC_FIGHTER_TYPE_NUM : u16 = 0;
-const CASTLE_TYPE_NUM : u16 = 1;
-const BULLET_TYPE_NUM : u16 = 2;
-const TIE_FIGHTER_TYPE_NUM : u16 = 3;
-const SNIPER_TYPE_NUM : u16 = 4;
-const DEMOLITION_CRUISER_TYPE_NUM : u16 = 5;
-const BATTLESHIP_TYPE_NUM : u16 = 6;
-const SMALL_BOMB_TYPE_NUM : u16 = 7;
-
-
-#[derive(Debug, ProtocolRoot, PartialEq)]
-enum ClientMessage {
-    Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8),
-    Connect(String, String), // connect with your nickname and the password respectively. doesn't let you place your castle yet.
-    // passwords are, like in MMOSG, used for various things: they can grant entry into a server, they can assign your team, etc. In io games they are usually ignored.
-    PlacePiece(f32, f32, u16), // x, y, type
-    // attempt to place an object
-    // before the client can place anything else, it must place a castle (type 1). this is the only time in the game that a client can place an object in neutral territory.
-    // obviously it's not possible to place a castle in enemy territory
-    StrategyPointAdd(u32, u16, f32, f32), // (id, index, x, y) insert a point to a strategy path at an index
-    StrategyPointUpdate(u32, u16, f32, f32), // (id, index, x, y) move a point on a strategy path
-    StrategyRemove(u32, u16), // (id, index) remove a node from a strategy
-    StrategyClear(u32), // (id) clear a strategy
-    // if any Strategy commands are sent referencing nonexistent nodes on a strategy, or StrategyPointUpdate is sent referencing a non-point strategy node (such
-    // as a teleportal entrance), the server will simply ignore them. This may be a problem in the future.
-    StrategySetEndcapRotation(u32, f32), // (id, r) set the strategy endcap for an object to a rotation
-}
-
-
-#[derive(Debug, ProtocolRoot, Clone)]
-enum ServerMessage {
-    Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8),
-    GameState(u8, u16, u16), // game state, stage tick, stage total time
-    // this is just 5 bytes - quite acceptable to send to every client every frame, much lower overhead than even ObjectMove.
-    // the first byte is bitbanged. bit 1 is io mode enable - in io mode, anyone can place a castle at any time. bit 2 is waiting/playing (1 = playing, 0 = waiting): in wait mode,
-    // castles can be placed, and the gameserver begins the game when >=2 castles have been waiting for a certain duration.
-    // wait mode does not exist in io mode; if bits 1 and 2 are set, something's wrong. Bit 3 controls if the mode is "move ships" (1) or "play" (0) - in
-    // "move ships" mode, people can set and modify the paths their ships will follow, and in play mode the ships will move along those paths.
-    // In play mode, castles that wish to do so may also "possess" a ship, controlling its motion in real time; this is the replacement for MMOSG's RTFs.
-    // Bits 4-8 are reserved.
-    Metadata(u64, f32, f32, u8), // send whatever data (id, board width x height, slot) the client needs to begin rendering the gameboard
-    // this also tells the client that it was accepted (e.g. got the right password); getting the password _wrong_ would abort the connection
-    // slot tells the client what position it's occupying. 0 = spectating, 1 = free agent, 2-255 = teams.
-    ObjectCreate(f32, f32, f32, u64, u32, u16), // x, y, a, owner, id, type: inform the client of an object.
-    ObjectMove(u32, f32, f32, f32), // id, x, y, a
-    ObjectTrajectoryUpdate(u32, f32, f32, f32, f32, f32, f32), // id, x, y, a, xv, yv, av
-    DeleteObject(u32), // id
-    StrategyCompletion(u32, u16), // (id, remaining) a node in a strategy has been fulfilled, and this is the number of strategy nodes remaining!
-    // this serves as a sort of checksum; if the number of strategy nodes remaining here is different from the number of strategy nodes remaining in the client
-    // the client knows there's something wrong and can send StrategyClear to attempt to recover.
-    PlayerData(u64, String, u8), // (id, banner, slot): data on another player
-    YouLose, // you LOST!
-    Winner(u64), // id of the winner. if 0, it was a tie.
-    Territory(u32, f32), // set the territory radius for a piece
-    Fabber(u32, f32), // set the fabber radius for a piece
-    Disconnect,
-    Money(u64, u32), // set the money amount for a client
-    // in the future we may want to be able to see the money of our allies, so the id tag could be useful
-    Explosion(f32, f32, f32, f32) // x, y, radius, damage: an explosion happened! the client should render it for one frame and then kill it
-}
-
-
-// upon connecting, the server immediately sends the client Test("EXOSPHERE", 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION)
-// if the client can successfully decode the message, and VERSION matches the client version, the game may proceed. Otherwise, the client will immediately drop the connection.
-// to signify that the test passed, the client will send a Test() with the same values and the client version. If the server can successfully decode them, and the version the
-// client sends matches VERSION, the game may proceed. Otherwise, the server will abort the connection.
-// this exchange prevents old, underprepared, or incompatible clients from connecting to a game.
-// If a client attempts to do anything before protocol verification, it will be kicked off the server.
+pub mod components;
+use components::*;
 
 
 struct Client {
@@ -193,148 +125,10 @@ impl Client {
 }
 
 
-enum Comms {
-    ClientConnect(Client),
-    ClientDisconnect(u64),
-    MessageFrom(u64, ClientMessage)
-}
-
-
-#[derive(Component)]
-struct GamePiece {
-    type_indicator : u16, // the type indicator sent to the client
-    // assigned by the gamepiece builder functions
-    // todo: do this a better way
-    owner : u64, // entry in the Clients hashmap
-    slot : u8, // identity slot of the owner
-    // in the future, we may want to eliminate this and instead do lookups in the HashMap (which is swisstable, so it's pretty fast)
-    // but for now it's convenient
-    last_update_pos : Vec2,
-    last_update_ang : f32,
-    health : f32
-}
-
-
-#[derive(Component)]
-struct Territory { // a territory control radius produced by a castle or fort.
-    radius : f32
-}
-
-impl Territory {
-    fn castle() -> Self { // TODO: make this meaningful
-        Self {
-            radius : 600.0
-        }
-    }
-}
-
-
-#[derive(Component)]
-struct Fabber { // a fabber bay with a radius
-    radius : f32,
-    l_missiles : u8,
-    l_ships : u8,
-    l_econ : u8,
-    l_defense : u8,
-    l_buildings : u8
-}
-
-
-impl Fabber {
-    fn castle() -> Self {
-        Self { // Large-M4S2E2D3B2
-            radius : 500.0,
-            l_missiles : 4,
-            l_ships : 3,
-            l_econ : 2,
-            l_defense : 3,
-            l_buildings : 2
-        }
-    }
-
-    fn is_available(&self, tp : PlaceType) -> bool { // determine if this fabber can produce an object given its numerical identifier
-        match tp {
-            PlaceType::BasicFighter => self.l_ships >= 1,
-            PlaceType::TieFighter => self.l_ships >= 1,
-            PlaceType::Castle => false, // fabbers can never place castles
-            PlaceType::Sniper => self.l_ships >= 1,
-            PlaceType::DemolitionCruiser => self.l_ships >= 2,
-            PlaceType::Battleship => self.l_ships >= 3
-        }
-    }
-}
-
-
-#[derive(Component)]
-struct Ship {
-    speed : f32,
-    acc_profile : f32 // in percentage of speed
-}
-
-impl Ship {
-    fn normal() -> Self {
-        return Self {
-            speed : 16.0,
-            acc_profile : 0.33
-        }
-    }
-
-    fn fast() -> Self {
-        return Self {
-            speed : 32.0,
-            acc_profile : 0.5
-        }
-    }
-
-    fn slow() -> Self {
-        return Self {
-            speed : 12.0,
-            acc_profile : 0.33
-        }
-    }
-}
-
-
-impl GamePiece {
-    fn new(type_indicator : u16, owner : u64, slot : u8, health : f32) -> Self {
-        Self {
-            type_indicator,
-            owner,
-            slot,
-            last_update_pos : Vec2 {
-                x : 0.0,
-                y : 0.0
-            },
-            last_update_ang : 0.0,
-            health : health
-        }
-    }
-}
-
-
 #[derive(Copy, Clone)]
 enum Bullets {
     MinorBullet(u16), // simple bullet with range
     Bomb(ExplosionProperties, u16) // properties of the explosion we're boutta detonate, range of the bullet
-}
-
-#[derive(Component)]
-struct TimeToLive {
-    lifetime : u16
-}
-
-
-#[derive(Component)]
-struct Bullet {
-    tp : Bullets
-} // bullet collision semantics
-// normal collisions between entities are only destructive if greater than a threshold
-// bullet collisions are always destructive
-
-
-enum Targeting { // for guns
-    Straight, // fire in the direction the gun is facing
-    Nearest // fire on the nearest enemy
 }
 
 
@@ -350,98 +144,6 @@ impl ExplosionProperties {
             radius : 100.0,
             damage : 2.0
         }
-    }
-}
-
-
-#[derive(Component)]
-struct Gun {
-    enabled : bool,
-    cd : u16, // cooldown ticks between shots
-    bullets : Bullets,
-    repeats : u16, // number of repeater shots
-    repeat_cd : u16, // time between repeater shots
-    // state fields (don't touch):
-    r_point : u16, // current repeater position
-    // the repeat pattern is pretty simple. when a bullet is fired, r_point is incremented by one, and if it's less than the number of repeats, `tick` is set to
-    // repeat_cd instead of cd. when r_point >= repeats, r_point = 0 and tick = cd.
-    tick : u16, // current tick
-    barrels : u16,
-    barrel_spacing : f32,
-    center_offset : f32
-}
-
-
-impl Gun {
-    fn mediocre() -> Self {
-        Self {
-            enabled : true,
-            cd : 20,
-            bullets : Bullets::MinorBullet(40),
-            repeats : 0,
-            repeat_cd : 0,
-            r_point : 0,
-            tick : 1,
-            barrels : 1,
-            barrel_spacing : 0.0,
-            center_offset : 40.0
-        }
-    }
-
-    fn basic_repeater(repeats : u16) -> Self {
-        Self {
-            enabled : true,
-            cd : 25,
-            bullets : Bullets::MinorBullet(50),
-            repeats,
-            repeat_cd : 5,
-            r_point : 0,
-            tick : 1,
-            barrels : 1,
-            barrel_spacing : 0.0,
-            center_offset : 40.0
-        }
-    }
-
-    fn sniper() -> Self {
-        Self {
-            enabled : true,
-            cd : 150,
-            bullets : Bullets::MinorBullet(200),
-            repeats : 0,
-            repeat_cd : 0,
-            r_point : 0,
-            tick : 1,
-            barrels : 1,
-            barrel_spacing : 0.0,
-            center_offset : 40.0
-        }
-    }
-
-    fn bomber() -> Self {
-        Self {
-            enabled : true,
-            cd : 120,
-            bullets : Bullets::Bomb(ExplosionProperties::small(), 75),
-            repeats : 0,
-            repeat_cd : 0,
-            r_point : 0,
-            tick : 1,
-            barrels : 1,
-            barrel_spacing : 0.0,
-            center_offset : 40.0
-        }
-    }
-
-    fn extended_barrels(mut self, num : u16, spacing : f32) -> Self {
-        self.barrels += num;
-        self.barrel_spacing = spacing;
-        self
-    }
-
-    fn offset(mut self, off : f32) -> Self {
-        self.center_offset = off;
-        self
     }
 }
 
@@ -532,13 +234,13 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                     }
                 }
             }
-            if let Ok((exp_entity, explosion)) = explosions.get(*one) {
-                if let Ok((entity, piece, _, _)) = pieces.get(*two) {
+            if let Ok((_, explosion)) = explosions.get(*one) {
+                if let Ok((_, _, _, _)) = pieces.get(*two) {
                     two_dmg += explosion.damage;
                 }
             }
-            if let Ok((exp_entity, explosion)) = explosions.get(*two) {
-                if let Ok((entity, piece, _, _)) = pieces.get(*one) {
+            if let Ok((_, explosion)) = explosions.get(*two) {
+                if let Ok((_, _, _, _)) = pieces.get(*one) {
                     one_dmg += explosion.damage;
                 }
             }
@@ -660,12 +362,32 @@ impl Placer<'_> {
         });
     }
 
+    fn seed(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a : 0.0,
+            owner,
+            slot,
+            tp : PlaceType::Seed,
+            free : false
+        });
+    }
+
     fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
         self.0.send(PlaceEvent {
             x, y, a,
             owner : client,
             slot,
             tp : PlaceType::BasicFighter,
+            free : true
+        });
+    }
+
+    fn chest_free(&mut self, x : f32, y : f32) {
+        self.0.send(PlaceEvent {
+            x, y, a : 0.0,
+            owner : 0,
+            slot : 0,
+            tp : PlaceType::Chest,
             free : true
         });
     }
@@ -684,6 +406,18 @@ fn boom(mut commands : Commands, mut explosions : EventReader<ExplosionEvent>, s
 fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &ExplosionProperties)>) { // must come BEFORE boom (so it's always on the tick afterwards)
     for (entity, _) in explosions.iter() {
         commands.entity(entity).despawn();
+    }
+}
+
+
+fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, mut place : EventWriter<PlaceEvent>) {
+    let mut place = Placer(place);
+    for (entity, transform, mut seed) in seeds.iter() {
+        seed.time_to_grow -= 1;
+        if seed.time_to_grow == 0 {
+            commands.entity(entity).despawn();
+            place.chest_free(transform.translation.x, transform.translation.y);
+        }
     }
 }
 
@@ -843,6 +577,11 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             BATTLESHIP_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(200) {
                                                     place.battleship(x, y, 0.0, id, slot);
+                                                }
+                                            }
+                                            SEED_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(10) {
+                                                    place.seed(x, y, id, slot);
                                                 }
                                             }
                                             _ => {
@@ -1035,7 +774,9 @@ enum PlaceType {
     TieFighter,
     Sniper,
     DemolitionCruiser,
-    Battleship
+    Battleship,
+    Seed,
+    Chest
 }
 
 fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
@@ -1048,7 +789,6 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
         }));
         // fabber check
         let mut isfab = false;
-        println!("placing of type {:?}", ev.tp);
         if ev.free {
             isfab = true;
         }
@@ -1058,7 +798,6 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 let d_y = position.translation.y - ev.y;
                 let dist = d_x * d_x + d_y * d_y;
                 if let Some(fabber) = fabber {
-                    println!("distance from territory (cl {}, slot {}) is {}", territory_holder.owner, territory_holder.slot, dist);
                     if dist < fabber.radius * fabber.radius && fabber.is_available(ev.tp) {
                         if territory_holder.owner == ev.owner {
                             isfab = true;
@@ -1120,6 +859,16 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 piece.insert((Collider::cuboid(75.0, 100.0), PathFollower::start(ev.x, ev.y), Ship::slow(), Gun::mediocre().extended_barrels(4, 40.0).offset(90.0)));
                 health = 12.0;
                 BATTLESHIP_TYPE_NUM
+            },
+            PlaceType::Seed => {
+                piece.insert((Collider::cuboid(3.5, 3.5), Seed::new()));
+                health = 1.0;
+                SEED_TYPE_NUM
+            },
+            PlaceType::Chest => {
+                piece.insert((Collider::cuboid(10.0, 10.0), Chest{}));
+                health = 1.0;
+                CHEST_TYPE_NUM
             }
         };
         piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));
@@ -1366,7 +1115,7 @@ async fn main() {
         .add_systems(
             PlaySchedule,
             (
-                move_ships, shoot, ttl
+                move_ships, shoot, ttl, seed_mature
             )
         )
         .init_schedule(PlaySchedule)

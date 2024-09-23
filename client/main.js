@@ -220,6 +220,12 @@ function mainloop() {
             ctx.fillStyle = "white";
             ctx.fillRect(-5, -5, 10, 10);
         }
+        else if (item.type == 8) {
+            ctx.drawImage(getRes("seed"), -3.5, -3.5);
+        }
+        else if (item.type == 9) {
+            ctx.drawImage(getRes("chest"), -10, -10);
+        }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
         var m_dx = mouseX - x;
