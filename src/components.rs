@@ -17,7 +17,6 @@ use crate::Bullets;
 use crate::ExplosionProperties;
 use bevy::prelude::Vec2;
 use crate::PlaceType;
-use crate::consts::UPDATE_RATE;
 
 
 #[derive(Component)]

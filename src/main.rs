@@ -24,7 +24,6 @@
 
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
-use bevy_rapier2d::dynamics::ReadMassProperties;
 use warp::Filter;
 use futures_util::{StreamExt, SinkExt};
 use tokio::sync::{Mutex, mpsc, broadcast};
@@ -191,7 +190,7 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &mu
 }
 
 
-fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
+fn ttl(commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
     for (entity, mut ttl) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
             kill_event.send(PieceDestroyedEvent { piece : entity });
@@ -203,7 +202,7 @@ fn ttl(mut commands : Commands, mut expirees : Query<(Entity, &mut TimeToLive)>,
 }
 
 
-fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, mut pieces : Query<&GamePiece>, mut bullets : Query<(&Bullet, &Transform)>, mut events : EventReader<PieceDestroyedEvent>, mut explosions : EventWriter<ExplosionEvent>, mut client_kill : EventWriter<ClientKilledEvent>) {
+fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Query<&GamePiece>, bullets : Query<(&Bullet, &Transform)>, mut events : EventReader<PieceDestroyedEvent>, mut explosions : EventWriter<ExplosionEvent>, mut client_kill : EventWriter<ClientKilledEvent>) {
     for evt in events.read() {
         if let Ok(piece) = pieces.get(evt.piece) {
             if let Ok((bullet, pos)) = bullets.get(evt.piece) {
@@ -227,8 +226,8 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, mut pieces
 }
 
 
-fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<CollisionEvent>,
-    mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, explosions : Query<(&ExplosionProperties)>,
+fn handle_collisions(commands : Commands, mut collision_events: EventReader<CollisionEvent>,
+    mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>)>, explosions : Query<&ExplosionProperties>,
     broadcast : ResMut<Sender>, mut piece_destroy : EventWriter<PieceDestroyedEvent>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
@@ -246,12 +245,12 @@ fn handle_collisions(mut commands : Commands, mut collision_events: EventReader<
                     }
                 }
             }
-            if let Ok((explosion)) = explosions.get(*one) {
+            if let Ok(explosion) = explosions.get(*one) {
                 if let Ok((_, _, _)) = pieces.get(*two) {
                     two_dmg += explosion.damage;
                 }
             }
-            if let Ok((explosion)) = explosions.get(*two) {
+            if let Ok(explosion) = explosions.get(*two) {
                 if let Ok((_, _, _)) = pieces.get(*one) {
                     one_dmg += explosion.damage;
                 }
@@ -390,7 +389,7 @@ fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &Explosi
 }
 
 
-fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, mut place : EventWriter<PlaceEvent>) {
+fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>) {
     let mut place = Placer(place);
     for (entity, transform, mut seed) in seeds.iter_mut() {
         seed.time_to_grow -= 1;
@@ -449,7 +448,7 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
 }
 
 
-fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>, Option<&Transform>, Option<&Territory>)>, mut ev_newclient : EventWriter<NewClientEvent>, mut place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
+fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>, Option<&Transform>, Option<&Territory>)>, mut ev_newclient : EventWriter<NewClientEvent>, place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
     let mut place = Placer(place);
     // manage events from network-connected clients
     loop { // loops receiver.try_recv(), until it returns empty
@@ -863,7 +862,7 @@ fn setup(mut state : ResMut<GameState>, config : Res<GameConfig>) {
 }
 
 
-fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut broadcast : ResMut<Sender>) {
+fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>, broadcast : ResMut<Sender>) {
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
     // * if the client has any remaining Territory, it's not dead, false alarm
