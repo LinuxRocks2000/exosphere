@@ -192,7 +192,7 @@ function mainloop() {
             ctx.beginPath();
             ctx.strokeStyle = "blue";
             ctx.lineWidth = 2;
-            ctx.arc(item.x_n, item.y_n, 200.0, 0, Math.PI * 2);
+            ctx.arc(item.x_n, item.y_n, 100.0, 0, Math.PI * 2);
             ctx.stroke();
         }
     }

@@ -13,6 +13,7 @@
 // ALL of the component declarations and their respective impls
 
 use bevy::prelude::Component;
+use bevy::prelude::Entity;
 use crate::Bullets;
 use crate::ExplosionProperties;
 use bevy::prelude::Vec2;
@@ -153,13 +154,15 @@ pub(crate) struct Bullet {
 
 #[derive(Component)]
 pub(crate) struct Seed {
-    pub(crate) time_to_grow : u16 // remaining time before this seed sprouts
+    pub(crate) time_to_grow : u16, // remaining time before this seed sprouts
+    pub(crate) growing : bool // are we actively growing?
 }
 
 impl Seed {
     pub(crate) fn new() -> Self {
         Self {
-            time_to_grow : 600
+            time_to_grow : 100,
+            growing : false
         }
     }
 }
@@ -272,13 +275,16 @@ impl Gun {
 
 #[derive(Component)]
 pub(crate) struct Farmhouse {
-    pub(crate) radius : f32
+
 }
 
-impl Farmhouse {
-    pub fn new() -> Self {
-        Self {
-            radius : 200.0
-        }
+#[derive(Component)]
+pub(crate) struct FarmSensor {
+    pub(crate) farm : Entity
+}
+
+impl FarmSensor {
+    pub(crate) fn of(farm : Entity) -> Self {
+        Self {farm}
     }
 }

@@ -241,19 +241,33 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
 }
 
 
+fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>) {
+    let mut place = Placer(place);
+    for (entity, transform, mut seed) in seeds.iter_mut() {
+        if seed.growing {
+            seed.time_to_grow -= 1;
+        }
+        if seed.time_to_grow == 0 {
+            commands.entity(entity).despawn();
+            place.chest_free(transform.translation.x, transform.translation.y);
+        }
+    }
+}
+
+
 fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
-        mut pieces : Query<(Entity,
-        &mut GamePiece, Option<&Bullet>)>,
+        mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, Option<&mut Seed>)>,
         explosions : Query<&ExplosionProperties>,
-        mut piece_destroy : EventWriter<PieceDestroyedEvent>) {
+        mut piece_destroy : EventWriter<PieceDestroyedEvent>,
+        farmfields : Query<&FarmSensor>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
             let mut one_killer : u64 = 0; // the id of the player that owned the piece that damaged the piece
             let mut two_killer : u64 = 0; // that is one HELL of a sentence
-            if let Ok((_, piece_one, bullet_one)) = pieces.get(*one) {
-                if let Ok((_, piece_two, bullet_two)) = pieces.get(*two) {
+            if let Ok((_, piece_one, bullet_one, _)) = pieces.get(*one) {
+                if let Ok((_, piece_two, bullet_two, _)) = pieces.get(*two) {
                     if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
                         two_dmg = piece_one.health;
                         two_killer = piece_one.owner;
@@ -266,18 +280,28 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                     }
                 }
             }
+            if let Ok(farm) = farmfields.get(*one) {
+                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*two) {
+                    seed.growing = true;
+                }
+            }
+            if let Ok(farm) = farmfields.get(*two) {
+                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*one) {
+                    seed.growing = true;
+                }
+            }
             if let Ok(explosion) = explosions.get(*one) {
-                if let Ok((_, _, _)) = pieces.get(*two) {
+                if let Ok((_, _, _, _)) = pieces.get(*two) {
                     two_dmg += explosion.damage;
                 }
             }
             if let Ok(explosion) = explosions.get(*two) {
-                if let Ok((_, _, _)) = pieces.get(*one) {
+                if let Ok((_, _, _, _)) = pieces.get(*one) {
                     one_dmg += explosion.damage;
                 }
             }
             if one_dmg != 0.0 {
-                if let Ok((entity_one, mut piece_one, _)) = pieces.get_mut(*one) {
+                if let Ok((entity_one, mut piece_one, _, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
                     if piece_one.health <= 0.0 {
                         piece_destroy.send(PieceDestroyedEvent { piece : entity_one, responsible : one_killer });
@@ -285,11 +309,23 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 }
             }
             if two_dmg != 0.0 {
-                if let Ok((entity_two, mut piece_two, _)) = pieces.get_mut(*two) {
+                if let Ok((entity_two, mut piece_two, _, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
                     if piece_two.health <= 0.0 {
                         piece_destroy.send(PieceDestroyedEvent { piece : entity_two, responsible : two_killer });
                     }
+                }
+            }
+        }
+        if let CollisionEvent::Stopped(one, two, _) = event {
+            if let Ok(farm) = farmfields.get(*one) {
+                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*two) {
+                    seed.growing = false;
+                }
+            }
+            if let Ok(farm) = farmfields.get(*two) {
+                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*one) {
+                    seed.growing = false;
                 }
             }
         }
@@ -416,18 +452,6 @@ fn boom(mut commands : Commands, mut explosions : EventReader<ExplosionEvent>, s
 fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &ExplosionProperties)>) { // must come BEFORE boom (so it's always on the tick afterwards)
     for (entity, _) in explosions.iter() {
         commands.entity(entity).despawn();
-    }
-}
-
-
-fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>) {
-    let mut place = Placer(place);
-    for (entity, transform, mut seed) in seeds.iter_mut() {
-        seed.time_to_grow -= 1;
-        if seed.time_to_grow == 0 {
-            commands.entity(entity).despawn();
-            place.chest_free(transform.translation.x, transform.translation.y);
-        }
     }
 }
 
@@ -887,13 +911,17 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 CHEST_TYPE_NUM
             },
             PlaceType::Farmhouse => {
-                piece.insert((Collider::cuboid(25.0, 25.0), Farmhouse::new()));
+                piece.insert((Collider::cuboid(25.0, 25.0), Farmhouse {}));
                 health = 2.0;
                 FARMHOUSE_TYPE_NUM
             }
         };
         piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));
         let _ = broadcast.send(ServerMessage::ObjectCreate(ev.x, ev.y, ev.a, ev.owner, piece.id().index(), t_num));
+        if let PlaceType::Farmhouse = ev.tp {
+            let id = piece.id();
+            commands.spawn((FarmSensor::of(id), Collider::ball(100.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
+        }
     }
 }
 
@@ -1136,7 +1164,7 @@ async fn main() {
         .add_systems(
             PlaySchedule,
             (
-                move_ships, shoot, ttl, seed_mature
+                move_ships, shoot, ttl, seed_mature, handle_collisions
             )
         )
         .init_schedule(PlaySchedule)
@@ -1182,9 +1210,8 @@ async fn main() {
             position_updates,
             frame_broadcast.before(position_updates),
             make_thing, boom, explosion_clear.before(boom).after(handle_collisions),
-            handle_collisions,
             client_health_check.before(handle_collisions),
-            on_piece_dead.after(handle_collisions).after(seed_mature).after(ttl)
+            on_piece_dead.after(handle_collisions).after(ttl).after(seed_mature)
         )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, setup)
         .set_runner(|mut app| {
