@@ -10,7 +10,7 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
 */
 
-// Piece type definitions and helper functions
+// Piece type definitions and helper functions.
 
 /* HOW TO ADD NEW TYPES
   In the client
@@ -57,7 +57,8 @@ pub(crate) enum PieceType {
     Chest = 9,
     Farmhouse = 10,
     BallisticMissile = 11,
-    FleetDefenseShip = 12
+    FleetDefenseShip = 12,
+    SeekingMissile = 13
 }
 
 
@@ -73,6 +74,7 @@ impl PieceType {
             Self::Seed => 5,
             Self::BallisticMissile => 5,
             Self::Farmhouse => 70,
+            Self::SeekingMissile => 10,
             _ => 0
         }
     }
@@ -81,7 +83,7 @@ impl PieceType {
         match self {
             Self::BasicFighter | Self::TieFighter | Self::Sniper |
             Self::DemolitionCruiser | Self::Battleship | Self::Seed |
-            Self::Farmhouse | Self::BallisticMissile |
+            Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile |
             Self::FleetDefenseShip => true, // if you want a type to be user placeable, just add it to this lil' blob.
             _ => false
         }
@@ -97,6 +99,7 @@ impl PieceType {
             Self::Seed => FabLevels::econ(1),
             Self::Farmhouse => FabLevels::econ(2),
             Self::BallisticMissile => FabLevels::missiles(1),
+            Self::SeekingMissile => FabLevels::missiles(1),
             _ => FabLevels::default()
         }
     }

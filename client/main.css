@@ -83,10 +83,6 @@ body > * {
     display: none;
 }
 
-#buyshipmenu > div > div > label {
-    display: inline-block;
-}
-
 #buyshipmenu > div > div > input:checked + label {
     background-color: red;
 }
@@ -101,6 +97,9 @@ body > * {
 }
 
 #buyshipmenu label {
-    display: inline-flex;
+    display: flex;
     justify-content: center;
+    align-items: center;
+    width: 30px;
+    height: 30px;
 }

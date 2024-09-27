@@ -348,22 +348,15 @@ pub(crate) struct Farmhouse {
 }
 
 
-pub(crate) enum FieldSensorMode {
-    Unfiltered // don't filter by anything
-}
-
-
 #[derive(Component)]
 pub(crate) struct FieldSensor {
-    pub(crate) mode : FieldSensorMode,
-    pub(crate) attached_to : Entity // TODO: use this reference to the actual object to keep the sensor aligned with it!
+    pub(crate) attached_to : Entity
 }
 
 impl FieldSensor {
     pub(crate) fn farmhouse(piece : Entity) -> Self {
         Self {
-            attached_to : piece,
-            mode : FieldSensorMode::Unfiltered
+            attached_to : piece
         }
     }
 }
@@ -371,7 +364,10 @@ impl FieldSensor {
 #[derive(Component)]
 pub(crate) struct Missile {
     pub(crate) decelerator : f32,
-    pub(crate) acc_profile : f32
+    pub(crate) acc_profile : f32,
+    pub(crate) target_lock : Option<Entity>, // missiles can be target-locked to a gamepiece. they will ignore the pathfollower after locking.
+    pub(crate) intercept_burn : f32, // during the intercept burn, it heavily side-corrects, angular positioning gets much more accurate, and it accelerates at intercept_burn_power.
+    pub(crate) intercept_burn_power : f32 // intercept burn begins when it's locked to a target that is nearer than intercept_burn units away.
 }
 
 
@@ -379,7 +375,19 @@ impl Missile {
     pub(crate) fn ballistic() -> Self {
         Self {
             decelerator : 0.01,
-            acc_profile : 8.0
+            acc_profile : 8.0,
+            target_lock : None,
+            intercept_burn : 200.0,
+            intercept_burn_power : 60.0
+        }
+    }
+    pub(crate) fn cruise() -> Self { // accelerates faster but has a lower max speed
+        Self {
+            decelerator : 0.04,
+            acc_profile : 18.0,
+            target_lock : None,
+            intercept_burn : 200.0,
+            intercept_burn_power : 60.0
         }
     }
 }

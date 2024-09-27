@@ -241,6 +241,9 @@ function mainloop() {
         else if (item.type == 11) {
             ctx.drawImage(getRes("ballistic_missile_" + fString), -17.5, -10);
         }
+        else if (item.type == 13) {
+            ctx.drawImage(getRes("seeking_missile_" + fString), -17.5, -10);
+        }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
         var m_dx = mouseX - x;
@@ -370,7 +373,7 @@ function canUpdateStrategy(obj) {
     if (obj.owner != m_id) {
         return false; // we can never move an object that isn't ours
     }
-    return [0, 3, 4, 5, 6, 11].indexOf(obj.type) != -1;
+    return [0, 3, 4, 5, 6, 11, 13].indexOf(obj.type) != -1;
 }
 
 function play() {

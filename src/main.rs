@@ -11,6 +11,8 @@
 */
 
 // biiiiiiiiiiiiiiiiiiiiiiiiiiiiig TODO: split this up into a bunch of different files because JEEZ this is unreadable garbage
+// TODO TODO TODO: fix the sensor leak: when a sensored thing dies, its sensor persists. the sensor doesn't do anything because of attachment checks, but it's still *there*
+// wasting memory and cpu cycles.
 
 // note:
 /*
@@ -155,7 +157,7 @@ impl ExplosionProperties {
 
 fn discharge_barrel(commands : &mut Commands, owner : u64, barrel : u16, gun : &Gun, position : &Transform, velocity : &Velocity, broadcast : &ResMut<Sender>) {
     let ang = position.rotation.to_euler(EulerRot::ZYX).0;
-    let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 400.0);
+    let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 450.0);
     let mut transform = position.clone();
     transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
     transform.translation += (Vec2::from_angle(ang).perp() * gun.barrel_spacing * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5)).extend(0.0);
@@ -262,11 +264,13 @@ fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &
 
 fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
         mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, Option<&mut Seed>)>,
+        mut missiles : Query<&mut Missile>,
+        farms : Query<&Farmhouse>,
         explosions : Query<&ExplosionProperties>,
         velocities : Query<&Velocity>, // we use this to calculate the relative VELOCITY (NOT collision energy - it's physically inaccurate, but idc) and then the damage they incur.
         // this means at low speeds you can safely puuuuush, but at high speeds you get destroyed
         mut piece_destroy : EventWriter<PieceDestroyedEvent>,
-        sensors : Query<&FieldSensor>) {
+        sensors : Query<(Entity, &FieldSensor)>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
@@ -279,7 +283,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                     let r_vel = (v1.linvel - v2.linvel).length();
                     if r_vel >= 400.0 { // anything slower is nondestructive. every 100 m/s after it does 1 damage, starting from 1.
                         // because bullets are usually moving at 400.0 and change, bullets will usually do a little over 1 damage. missiles will do quite a bit more.
-                        let d = 1.0 + (r_vel - 400.0) / 100.0;
+                        let d = (r_vel - 350.0) / 100.0;
                         one_dmg = d;
                         two_dmg = d;
                         if let Ok((_, piece_one, _, _)) = pieces.get(*one) {
@@ -290,21 +294,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                         }
                     }
                 }
-            }/*
-            if let Ok((_, piece_one, bullet_one, _)) = pieces.get(*one) {
-                if let Ok((_, piece_two, bullet_two, _)) = pieces.get(*two) {
-                    if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
-                        two_dmg = piece_one.health;
-                        two_killer = piece_one.owner;
-                        one_dmg = piece_one.health;
-                    }
-                    if bullet_two.is_some() {
-                        one_dmg += piece_two.health;
-                        one_killer = piece_two.owner;
-                        two_dmg += piece_one.health;
-                    }
-                }
-            }*/
+            }
             if let Ok(explosion) = explosions.get(*one) {
                 if let Ok((_, _, _, _)) = pieces.get(*two) {
                     two_dmg += explosion.damage;
@@ -339,18 +329,37 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             sensor_is_one = false;
             sensor = sensors.get(*two);
         }
-        if let Ok(sensor) = sensor {
+        if let Ok((sensor_entity, sensor)) = sensor {
+            let mut sensor_owner : u64 = 0;
+            let mut sensor_slot : u8 = 0;
+            if let Ok((_, sensored_piece, _, _)) = pieces.get(sensor.attached_to) {
+                sensor_owner = sensored_piece.owner;
+                sensor_slot = sensored_piece.slot;
+            }
             let piece = if sensor_is_one {
                 pieces.get_mut(*two)
             } else {
                 pieces.get_mut(*one)
             };
-            if let Ok((_, _, _, Some(mut seed))) = piece {
-                if let CollisionEvent::Started(_, _, _) = event {
-                    seed.growing = true;
+            if let Ok((entity, gamepiece, _, seed)) = piece {
+                if let Some(mut seed) = seed {
+                    if let Ok(_) = farms.get(sensor.attached_to) {
+                        if let CollisionEvent::Started(_, _, _) = event {
+                            seed.growing = true;
+                        }
+                        else {
+                            seed.growing = false;
+                        }
+                    }
                 }
-                else {
-                    seed.growing = false;
+                if gamepiece.owner != sensor_owner && (gamepiece.slot != sensor_slot || gamepiece.slot == 1) { // check if the piece is enemy or not
+                    if sensor.attached_to != entity { // missiles can't attempt to attack themselves
+                        if let Ok(mut missile) = missiles.get_mut(sensor.attached_to) {       
+                            if missile.target_lock.is_none() {
+                                missile.target_lock = Some(entity);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -467,19 +476,36 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
     }
 }
 
-fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, &Transform, &Missile, &mut PathFollower, &Collider, &GamePiece)>, mut clients : ResMut<ClientMap>) {
-    for (entity, mut impulse, velocity, transform, missile, mut follower, collider, piece) in missiles.iter_mut() {
+fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, &Transform, &mut Missile, &mut PathFollower, &Collider, &GamePiece)>, targets : Query<&Transform>, mut clients : ResMut<ClientMap>) {
+    for (entity, mut impulse, velocity, transform, mut missile, mut follower, collider, piece) in missiles.iter_mut() {
         if let Some(next) = follower.get_next() {
-            let gpos = match next {
+            let mut gpos = match next {
                 PathNode::StraightTo(x, y) => Vec2 { x, y },
                 PathNode::Teleportal(_, _) => Vec2::ZERO // TODO: IMPLEMENT
             };
+            if let Some(lock) = missile.target_lock {
+                if let Ok(target) = targets.get(lock) {
+                    gpos = target.translation.truncate();
+                }
+                else {
+                    println!("target eliminated");
+                    missile.target_lock = None;
+                }
+            }
             let cpos = transform.translation.truncate();
             let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
             let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
-            if (gpos - cpos).length() > 30.0 {
-                impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.acc_profile - velocity.linvel / inv_mass * missile.decelerator;
-                impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 50.0 / inv_mass - velocity.angvel / inv_mass * 30.0;
+            let delta = (gpos - cpos).length();
+            if delta > 30.0 {
+                if delta < missile.intercept_burn {
+                    impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.intercept_burn_power;
+                    impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.2; // linear deviation correction thrusters
+                    impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 100.0 / inv_mass - velocity.angvel / inv_mass * 100.0;
+                }
+                else {
+                    impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.acc_profile - velocity.linvel / inv_mass * missile.decelerator;
+                    impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 50.0 / inv_mass - velocity.angvel / inv_mass * 30.0;
+                }
                 //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
                 // this can produce odd effects at close approach, hence the normalizer code
                 //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
@@ -774,6 +800,15 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
 }
 
 
+fn update_field_sensors(mut sensors : Query<(&FieldSensor, &mut Transform), Without<GamePiece>>, pieces : Query<(&GamePiece, &Transform), Without<FieldSensor>>) {
+    for (sensor, mut pos) in sensors.iter_mut() {
+        if let Ok((piece, piece_pos)) = pieces.get(sensor.attached_to) {
+            pos.translation = piece_pos.translation;
+        } 
+    }
+}
+
+
 fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
     'evloop: for ev in things.read() {
         let mut transform = Transform::from_xyz(ev.x, ev.y, 0.0);
@@ -865,15 +900,22 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 piece.insert((Collider::cuboid(17.5, 10.0), Missile::ballistic(), PathFollower::start(ev.x, ev.y)));
                 health = 1.0;
             },
+            PieceType::SeekingMissile => {
+                piece.insert((Collider::cuboid(17.5, 10.0), Missile::cruise(), PathFollower::start(ev.x, ev.y)));
+                health = 1.0;
+            },
             PieceType::Bullet => {}, // not implemented: bullets must be created by the discharge_barrel function
             PieceType::SmallBomb => {}, // same
             PieceType::FleetDefenseShip => {} // TODO: fleet defense ships
         };
         piece.insert(GamePiece::new(ev.tp, ev.owner, ev.slot, health));
         let _ = broadcast.send(ServerMessage::ObjectCreate(ev.x, ev.y, ev.a, ev.owner, piece.id().index(), ev.tp as u16));
+        let id = piece.id();
         if let PieceType::Farmhouse = ev.tp {
-            let id = piece.id();
             commands.spawn((FieldSensor::farmhouse(id), Collider::ball(100.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
+        }
+        if let PieceType::SeekingMissile = ev.tp {
+            commands.spawn((FieldSensor::farmhouse(id), Collider::ball(300.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
         }
     }
 }
@@ -885,15 +927,21 @@ fn setup(mut state : ResMut<GameState>, config : Res<GameConfig>) {
 }
 
 
+struct EmptyWorld;
+
+impl bevy::ecs::world::Command for EmptyWorld {
+    fn apply(self, world : &mut World) {
+        world.clear_entities(); // todo: don't clear (or do respawn) things that should stick around, like walls
+    }
+}
+
+
 fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>) {
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
     // * if the client has any remaining Territory, it's not dead, false alarm
     // if we determined that the client is in fact dead, send a Lose message and update the state accordingly.
     // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
-    if !state.playing {
-        return; // client kill can't happen during wait mode
-    }
     let mut did_something = false;
     for ev in events.read() {
         if !clients.contains_key(&ev.client) { // if the client's already disconnected, we can't exactly tell them they lost
@@ -915,7 +963,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
         did_something = true;
     }
     if did_something { // only if we made a change does it make sense to update the state here
-        if state.currently_playing < 2 {
+        if state.playing && state.currently_playing < 2 {
             if state.currently_playing == 1 {
                 let mut winid : u64 = 0;
                 for (id, client) in clients.iter() {
@@ -934,10 +982,13 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
             state.tick = 0;
             state.time_in_stage = config.wait_period;
             state.currently_playing = 0;
-            for (_, _, entity) in pieces.iter() {
-                // todo: don't delete things that are supposed to stick around (like walls)
-                commands.entity(entity).despawn();
-            }
+            commands.add(EmptyWorld{});
+        }
+        if state.currently_playing < config.min_player_slots {
+            state.playing = false;
+            state.tick = 0;
+            state.time_in_stage = config.wait_period;
+            state.strategy = false;
         }
     }
 }
@@ -1163,8 +1214,9 @@ async fn main() {
             position_updates,
             frame_broadcast.before(position_updates),
             make_thing, boom, explosion_clear.before(boom).after(handle_collisions),
-            client_health_check.before(handle_collisions),
-            on_piece_dead.after(handle_collisions).after(ttl).after(seed_mature)
+            on_piece_dead.after(handle_collisions).after(ttl).after(seed_mature),
+            update_field_sensors,
+            client_health_check
         )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, setup)
         .set_runner(|mut app| {
