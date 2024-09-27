@@ -17,12 +17,12 @@ use bevy::prelude::Entity;
 use crate::Bullets;
 use crate::ExplosionProperties;
 use bevy::prelude::Vec2;
-use crate::PlaceType;
+use crate::PieceType;
 
 
 #[derive(Component)]
 pub(crate) struct GamePiece {
-    pub(crate) type_indicator : u16, // the type indicator sent to the client
+    pub(crate) tp : PieceType, // the type of this piece
     // assigned by the gamepiece builder functions
     // todo: do this a better way
     pub(crate) owner : u64, // entry in the Clients hashmap
@@ -36,9 +36,9 @@ pub(crate) struct GamePiece {
 
 
 impl GamePiece {
-    pub(crate) fn new(type_indicator : u16, owner : u64, slot : u8, health : f32) -> Self {
+    pub(crate) fn new(tp : PieceType, owner : u64, slot : u8, health : f32) -> Self {
         Self {
-            type_indicator,
+            tp,
             owner,
             slot,
             last_update_pos : Vec2 {
@@ -70,40 +70,108 @@ impl Territory {
 #[derive(Component)]
 pub(crate) struct Fabber { // a fabber bay with a radius
     pub(crate) radius : f32,
-    pub(crate) l_missiles : u8,
-    pub(crate) l_ships : u8,
-    pub(crate) l_econ : u8,
-    pub(crate) l_defense : u8,
-    pub(crate) l_buildings : u8
+    pub(crate) levels : FabLevels
 }
 
+
+#[derive(PartialEq)]
+pub(crate) struct FabLevels {
+    pub(crate) missiles : u8,
+    pub(crate) ships : u8,
+    pub(crate) econ : u8,
+    pub(crate) defense : u8,
+    pub(crate) buildings : u8
+}
+
+
+impl FabLevels {
+    pub(crate) fn default() -> Self {
+        Self {
+            missiles : 0,
+            ships : 0,
+            econ : 0,
+            defense : 0,
+            buildings : 0
+        }
+    }
+
+    pub(crate) fn with_missiles(mut self, lev : u8) -> Self {
+        self.missiles = lev;
+        self
+    }
+
+    pub(crate) fn with_ships(mut self, lev : u8) -> Self {
+        self.ships = lev;
+        self
+    }
+
+    pub(crate) fn with_econ(mut self, lev : u8) -> Self {
+        self.econ = lev;
+        self
+    }
+
+    pub(crate) fn with_defense(mut self, lev : u8) -> Self {
+        self.defense = lev;
+        self
+    }
+
+    pub(crate) fn with_buildings(mut self, lev : u8) -> Self {
+        self.buildings = lev;
+        self
+    }
+
+    pub(crate) fn missiles(lev : u8) -> Self {
+        Self::default().with_missiles(lev)
+    }
+
+    pub(crate) fn ships(lev : u8) -> Self {
+        Self::default().with_ships(lev)
+    }
+
+    pub(crate) fn econ(lev : u8) -> Self {
+        Self::default().with_econ(lev)
+    }
+
+    pub(crate) fn defense(lev : u8) -> Self {
+        Self::default().with_defense(lev)
+    }
+
+    pub(crate) fn buildings(lev : u8) -> Self {
+        Self::default().with_buildings(lev)
+    }
+}
+
+
+impl std::cmp::PartialOrd for FabLevels {
+    fn partial_cmp(&self, other : &FabLevels) -> Option<std::cmp::Ordering> {
+        // a FabLevels is greater than another FabLevels if every level is greater, and equal if they're all the same; otherwise, it is less.
+        if *self == *other {
+            return Some(std::cmp::Ordering::Equal);
+        }
+        if self.missiles > other.missiles && self.ships > other.ships && self.econ > other.econ && self.defense > other.defense && self.buildings > other.buildings {
+            return Some(std::cmp::Ordering::Greater);
+        }
+        Some(std::cmp::Ordering::Less)
+    }
+}
 
 
 impl Fabber {
     pub(crate) fn castle() -> Self {
         Self { // Large-M4S2E2D3B2
             radius : 500.0,
-            l_missiles : 4,
-            l_ships : 3,
-            l_econ : 2,
-            l_defense : 3,
-            l_buildings : 2
+            levels : FabLevels {
+                missiles : 4,
+                ships : 3,
+                econ : 2,
+                defense : 3,
+                buildings : 2
+            }
         }
     }
 
-    pub(crate) fn is_available(&self, tp : PlaceType) -> bool { // determine if this fabber can produce an object given its numerical identifier
-        match tp {
-            PlaceType::BasicFighter => self.l_ships >= 1,
-            PlaceType::TieFighter => self.l_ships >= 1,
-            PlaceType::Castle => false, // fabbers can never place castles
-            PlaceType::Sniper => self.l_ships >= 1,
-            PlaceType::DemolitionCruiser => self.l_ships >= 2,
-            PlaceType::Battleship => self.l_ships >= 3,
-            PlaceType::Seed => self.l_econ >= 1,
-            PlaceType::Chest => false, // fabbers can never place chests
-            PlaceType::Farmhouse => self.l_econ >= 2,
-            PlaceType::BallisticMissile => self.l_missiles >= 1
-        }
+    pub(crate) fn is_available(&self, tp : PieceType) -> bool { // determine if this fabber can produce an object
+        self.levels >= tp.fabber()
     }
 }
 

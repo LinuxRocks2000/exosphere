@@ -32,6 +32,20 @@
         </div>
         <div id="gameui" style="display: none">
             <div id="buyshipmenu">
+                <!--
+                    every direct div child of #buyshipmenu represents a row of placeables, usually directly corresponding to a
+                    tech line. Every div child of *those* is an actual placeable. The format for placeables is like so:
+
+                    <div>
+                        <input type="radio" name="shippicker" id="<unique placeable id>">
+                        <label for="<placeable id: must be same as in the input>" --data-place-type="<the type num, see types.rs>" --data-price="<the price>">
+                            <img src="<the main image you're using for this placeable>">
+                        </label>
+                    </div>
+
+                    in the future, this will all be stored in a JavaScript object somewhere and generated at runtime.
+                    or maybe a JSON file and rendered by a Python script.
+                -->
                 <div>
                     <div>
                         <input type="radio" name="shippicker" id="mpicker-ballistic">

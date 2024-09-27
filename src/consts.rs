@@ -18,16 +18,3 @@ pub const FRAME_TIME : std::time::Duration = std::time::Duration::from_millis(10
 pub const MAX_FRAME_SIZE : usize = 1024; // maximum size of an incoming websocket frame
 
 pub const VERSION : u8 = 0; // bump this up every time a major change is made
-
-pub const BASIC_FIGHTER_TYPE_NUM : u16 = 0;
-pub const CASTLE_TYPE_NUM : u16 = 1;
-pub const BULLET_TYPE_NUM : u16 = 2;
-pub const TIE_FIGHTER_TYPE_NUM : u16 = 3;
-pub const SNIPER_TYPE_NUM : u16 = 4;
-pub const DEMOLITION_CRUISER_TYPE_NUM : u16 = 5;
-pub const BATTLESHIP_TYPE_NUM : u16 = 6;
-pub const SMALL_BOMB_TYPE_NUM : u16 = 7;
-pub const SEED_TYPE_NUM : u16 = 8;
-pub const CHEST_TYPE_NUM : u16 = 9;
-pub const FARMHOUSE_TYPE_NUM : u16 = 10;
-pub const BALLISTIC_MISSILE_TYPE_NUM : u16 = 11;

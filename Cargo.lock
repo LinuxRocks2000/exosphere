@@ -1846,6 +1846,8 @@ dependencies = [
  "derive_macro",
  "futures-util",
  "log",
+ "num-derive",
+ "num-traits",
  "rand",
  "tokio",
  "tokio-macros 0.2.6",

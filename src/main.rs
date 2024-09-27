@@ -32,6 +32,8 @@ use std::collections::HashMap;
 use bevy::ecs::schedule::ScheduleLabel;
 use std::f32::consts::PI;
 use rand::Rng;
+use num_traits::FromPrimitive;
+
 
 pub mod protocol;
 use protocol::Protocol;
@@ -55,6 +57,9 @@ use comms::*;
 
 pub mod components;
 use components::*;
+
+pub mod types;
+use types::*;
 
 
 struct Client {
@@ -156,18 +161,18 @@ fn discharge_barrel(commands : &mut Commands, owner : u64, barrel : u16, gun : &
     transform.translation += (Vec2::from_angle(ang).perp() * gun.barrel_spacing * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5)).extend(0.0);
     match gun.bullets {
         Bullets::MinorBullet(range) => {
-            let piece = commands.spawn((GamePiece::new(BULLET_TYPE_NUM, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
+            let piece = commands.spawn((GamePiece::new(PieceType::Bullet, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
                 linear_damping : 0.0,
                 angular_damping : 0.0
             }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), BULLET_TYPE_NUM));
+            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), PieceType::Bullet as u16));
         },
         Bullets::Bomb(_, range) => {
-            let piece = commands.spawn((GamePiece::new(SMALL_BOMB_TYPE_NUM, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
+            let piece = commands.spawn((GamePiece::new(PieceType::SmallBomb, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
                 linear_damping : 0.0,
                 angular_damping : 0.0
             }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), SMALL_BOMB_TYPE_NUM));
+            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), PieceType::SmallBomb as u16));
         }
     }
 }
@@ -224,12 +229,12 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
                     });
                 }
             }
-            if let Ok(chest) = chests.get(evt.piece) {
-                if let Some(mut cl) = clients.get_mut(&evt.responsible) {
+            if let Ok(_) = chests.get(evt.piece) {
+                if let Some(cl) = clients.get_mut(&evt.responsible) {
                     cl.collect(20); // kill the chest, collect some dough, that's life, yo!
                 }
             }
-            if piece.type_indicator == CASTLE_TYPE_NUM {
+            if piece.tp == PieceType::Castle {
                 client_kill.send(ClientKilledEvent { client : piece.owner });
             }
             commands.entity(evt.piece).despawn();
@@ -268,6 +273,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
             let mut one_killer : u64 = 0; // the id of the player that owned the piece that damaged the piece
             let mut two_killer : u64 = 0; // that is one HELL of a sentence
+            // todo: defense and damage modifiers
             if let Ok(v1) = velocities.get(*one) {
                 if let Ok(v2) = velocities.get(*two) {
                     let r_vel = (v1.linvel - v2.linvel).length();
@@ -355,7 +361,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
 struct Placer<'a> (EventWriter<'a, PlaceEvent>);
 
 impl Placer<'_> {
-    fn p_simple(&mut self, x : f32, y : f32, client : u64, slot : u8, tp : PlaceType) {
+    fn p_simple(&mut self, x : f32, y : f32, client : u64, slot : u8, tp : PieceType) {
         self.0.send(PlaceEvent {
             x,
             y,
@@ -367,48 +373,12 @@ impl Placer<'_> {
         });
     }
 
-    fn castle(&mut self, x : f32, y : f32, client : u64, slot : u8) {
-        self.p_simple(x, y, client, slot, PlaceType::Castle);
-    }
-
-    fn basic_fighter(&mut self, x : f32, y : f32, client : u64, slot : u8) {
-        self.p_simple(x, y, client, slot, PlaceType::BasicFighter);
-    }
-
-    fn tie_fighter(&mut self, x : f32, y : f32, client : u64, slot : u8) {
-        self.p_simple(x, y, client, slot, PlaceType::TieFighter);
-    }
-
-    fn sniper(&mut self, x : f32, y : f32, client : u64, slot : u8) {
-        self.p_simple(x, y, client, slot, PlaceType::Sniper);
-    }
-
-    fn demolition_cruiser(&mut self, x : f32, y : f32, client : u64, slot : u8) {
-        self.p_simple(x, y, client, slot, PlaceType::DemolitionCruiser);
-    }
-
-    fn battleship(&mut self, x : f32, y : f32, client : u64, slot : u8) {
-        self.p_simple(x, y, client, slot, PlaceType::Battleship);
-    }
-
-    fn seed(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
-        self.p_simple(x, y, owner, slot, PlaceType::Seed);
-    }
-
-    fn farmhouse(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
-        self.p_simple(x, y, owner, slot, PlaceType::Farmhouse);
-    }
-
-    fn ballistic_missile(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
-        self.p_simple(x, y, owner, slot, PlaceType::BallisticMissile);
-    }
-
     fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
         self.0.send(PlaceEvent {
             x, y, a,
             owner : client,
             slot,
-            tp : PlaceType::BasicFighter,
+            tp : PieceType::BasicFighter,
             free : true
         });
     }
@@ -418,7 +388,17 @@ impl Placer<'_> {
             x, y, a : 0.0,
             owner : 0,
             slot : 0,
-            tp : PlaceType::Chest,
+            tp : PieceType::Chest,
+            free : true
+        });
+    }
+
+    fn castle(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a : 0.0,
+            owner : client,
+            slot,
+            tp : PieceType::Castle,
             free : true
         });
     }
@@ -570,88 +550,49 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                     ev_newclient.send(NewClientEvent {id});
                                 },
                                 ClientMessage::PlacePiece(x, y, t) => {
-                                    if t == CASTLE_TYPE_NUM {
-                                        if !state.playing || state.io {
-                                            if clients[&id].has_placed_castle {
-                                                println!("client attempted to place an extra castle. dropping.");
-                                                kill = true;
-                                            }
-                                            else {
-                                                let mut is_okay = true;
-                                                for (_, _, _, transform, territory) in pieces.iter() {
-                                                    if let Some(transform) = transform {
-                                                        if let Some(territory) = territory {
-                                                            let dx = transform.translation.x - x;
-                                                            let dy = transform.translation.y - y;
-                                                            let d = (dx * dx + dy * dy).sqrt();
-                                                            if d < territory.radius + 600.0 { // if the territories would intersect
-                                                                is_okay = false;
-                                                                break;
+                                    if let Some(t) = PieceType::from_u16(t) {
+                                        if t == PieceType::Castle {
+                                            if !state.playing || state.io {
+                                                if clients[&id].has_placed_castle {
+                                                    println!("client attempted to place an extra castle. dropping.");
+                                                    kill = true;
+                                                }
+                                                else {
+                                                    let mut is_okay = true;
+                                                    for (_, _, _, transform, territory) in pieces.iter() {
+                                                        if let Some(transform) = transform {
+                                                            if let Some(territory) = territory {
+                                                                let dx = transform.translation.x - x;
+                                                                let dy = transform.translation.y - y;
+                                                                let d = (dx * dx + dy * dy).sqrt();
+                                                                if d < territory.radius + 600.0 { // if the territories would intersect
+                                                                    is_okay = false;
+                                                                    break;
+                                                                }
                                                             }
                                                         }
                                                     }
-                                                }
-                                                if is_okay {
-                                                    state.currently_playing += 1;
-                                                    clients.get_mut(&id).unwrap().has_placed_castle = true;
-                                                    clients.get_mut(&id).unwrap().alive = true;
-                                                    clients.get_mut(&id).unwrap().collect(100);
-                                                    let slot = clients[&id].slot;
-                                                    place.castle(x, y, id, slot);
-                                                    place.basic_fighter_free(x - 200.0, y, PI, id, slot);
-                                                    place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
-                                                    place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
-                                                    place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
+                                                    if is_okay {
+                                                        state.currently_playing += 1;
+                                                        clients.get_mut(&id).unwrap().has_placed_castle = true;
+                                                        clients.get_mut(&id).unwrap().alive = true;
+                                                        clients.get_mut(&id).unwrap().collect(100);
+                                                        let slot = clients[&id].slot;
+                                                        place.castle(x, y, id, slot);
+                                                        place.basic_fighter_free(x - 200.0, y, PI, id, slot);
+                                                        place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
+                                                        place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
+                                                        place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
-                                    else if state.playing && state.strategy {
-                                        let slot = clients[&id].slot;
-                                        match t {
-                                            BASIC_FIGHTER_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(10) {
-                                                    place.basic_fighter(x, y, id, slot);
+                                        else if state.playing && state.strategy {
+                                            let slot = clients[&id].slot;
+                                            if t.user_placeable() {
+                                                if clients.get_mut(&id).unwrap().charge(t.price()) {
+                                                    place.p_simple(x, y, id, slot, t);
                                                 }
-                                            },
-                                            TIE_FIGHTER_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(20) {
-                                                    place.tie_fighter(x, y, id, slot);
-                                                }
-                                            },
-                                            SNIPER_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(30) {
-                                                    place.sniper(x, y, id, slot);
-                                                }
-                                            },
-                                            DEMOLITION_CRUISER_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(60) {
-                                                    place.demolition_cruiser(x, y, id, slot);
-                                                }
-                                            },
-                                            BATTLESHIP_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(200) {
-                                                    place.battleship(x, y, id, slot);
-                                                }
-                                            }
-                                            SEED_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(5) {
-                                                    place.seed(x, y, id, slot);
-                                                }
-                                            }
-                                            FARMHOUSE_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(70) {
-                                                    place.farmhouse(x, y, id, slot);
-                                                }
-                                            },
-                                            BALLISTIC_MISSILE_TYPE_NUM => {
-                                                if clients.get_mut(&id).unwrap().charge(5) {
-                                                    place.ballistic_missile(x, y, id, slot);
-                                                }
-                                            }
-                                            _ => {
-                                                println!("client attempted to place unknown type {}. dropping.", t);
-                                                kill = true;
                                             }
                                         }
                                     }
@@ -772,7 +713,7 @@ fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<C
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
             for (entity, piece, transform, territory, fabber) in objects.iter() {
-                client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_euler(EulerRot::ZYX).0, piece.owner, entity.index(), piece.type_indicator));
+                client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_euler(EulerRot::ZYX).0, piece.owner, entity.index(), piece.tp as u16));
                 if let Some(territory) = territory {
                     client.send(ServerMessage::Territory(entity.index(), territory.radius));
                 }
@@ -832,19 +773,6 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
     let _ = broadcast.send(ServerMessage::GameState (state.get_state_byte(), state.tick, state.time_in_stage));
 }
 
-#[derive(Copy, Clone, Debug)]
-enum PlaceType {
-    BasicFighter,
-    Castle,
-    TieFighter,
-    Sniper,
-    DemolitionCruiser,
-    Battleship,
-    Seed,
-    Chest,
-    Farmhouse,
-    BallisticMissile
-}
 
 fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
     'evloop: for ev in things.read() {
@@ -875,7 +803,7 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                     }
                 }
                 if let Some(territory) = territory {
-                    if let PlaceType::Castle = ev.tp {
+                    if ev.tp == PieceType::Castle {
                         if dist.sqrt() < territory.radius + 600.0 {
                             if territory_holder.owner != ev.owner && (territory_holder.slot == 1 || territory_holder.slot != ev.slot) {
                                 println!("too close!");
@@ -891,66 +819,59 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
             piece.despawn();
             continue;
         }
-        let health : f32;
-        let t_num : u16 = match ev.tp {
-            PlaceType::BasicFighter => {
+        let mut health = 0.0;
+        match ev.tp {
+            PieceType::BasicFighter => {
                 piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::mediocre()));
                 health = 3.0;
-                BASIC_FIGHTER_TYPE_NUM
             },
-            PlaceType::Castle => {
+            PieceType::Castle => {
                 let terr = Territory::castle();
                 let fab = Fabber::castle();
                 let _ = broadcast.send(ServerMessage::Territory(piece.id().index(), terr.radius));
                 let _ = broadcast.send(ServerMessage::Fabber(piece.id().index(), fab.radius));
                 piece.insert((Collider::cuboid(30.0, 30.0), terr, fab));
                 health = 6.0;
-                CASTLE_TYPE_NUM
             },
-            PlaceType::TieFighter => {
+            PieceType::TieFighter => {
                 piece.insert((Collider::cuboid(20.0, 25.0), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::basic_repeater(2)));
                 health = 3.0;
-                TIE_FIGHTER_TYPE_NUM
             },
-            PlaceType::Sniper => {
+            PieceType::Sniper => {
                 piece.insert((Collider::cuboid(30.0, 15.0), PathFollower::start(ev.x, ev.y), Ship::fast(), Gun::sniper()));
                 health = 3.0;
-                SNIPER_TYPE_NUM
             },
-            PlaceType::DemolitionCruiser => {
+            PieceType::DemolitionCruiser => {
                 piece.insert((Collider::cuboid(20.0, 20.0), PathFollower::start(ev.x, ev.y), Ship::slow(), Gun::bomber()));
                 health = 3.0;
-                DEMOLITION_CRUISER_TYPE_NUM
             },
-            PlaceType::Battleship => {
+            PieceType::Battleship => {
                 piece.insert((Collider::cuboid(75.0, 100.0), PathFollower::start(ev.x, ev.y), Ship::slow(), Gun::mediocre().extended_barrels(4, 40.0).offset(90.0)));
                 health = 12.0;
-                BATTLESHIP_TYPE_NUM
             },
-            PlaceType::Seed => {
+            PieceType::Seed => {
                 piece.insert((Collider::cuboid(3.5, 3.5), Seed::new()));
                 health = 1.0;
-                SEED_TYPE_NUM
             },
-            PlaceType::Chest => {
+            PieceType::Chest => {
                 piece.insert((Collider::cuboid(10.0, 10.0), Chest{}));
                 health = 1.0;
-                CHEST_TYPE_NUM
             },
-            PlaceType::Farmhouse => {
+            PieceType::Farmhouse => {
                 piece.insert((Collider::cuboid(25.0, 25.0), Farmhouse {}));
                 health = 2.0;
-                FARMHOUSE_TYPE_NUM
             },
-            PlaceType::BallisticMissile => {
+            PieceType::BallisticMissile => {
                 piece.insert((Collider::cuboid(17.5, 10.0), Missile::ballistic(), PathFollower::start(ev.x, ev.y)));
                 health = 1.0;
-                BALLISTIC_MISSILE_TYPE_NUM
-            }
+            },
+            PieceType::Bullet => {}, // not implemented: bullets must be created by the discharge_barrel function
+            PieceType::SmallBomb => {}, // same
+            PieceType::FleetDefenseShip => {} // TODO: fleet defense ships
         };
-        piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));
-        let _ = broadcast.send(ServerMessage::ObjectCreate(ev.x, ev.y, ev.a, ev.owner, piece.id().index(), t_num));
-        if let PlaceType::Farmhouse = ev.tp {
+        piece.insert(GamePiece::new(ev.tp, ev.owner, ev.slot, health));
+        let _ = broadcast.send(ServerMessage::ObjectCreate(ev.x, ev.y, ev.a, ev.owner, piece.id().index(), ev.tp as u16));
+        if let PieceType::Farmhouse = ev.tp {
             let id = piece.id();
             commands.spawn((FieldSensor::farmhouse(id), Collider::ball(100.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
         }

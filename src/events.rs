@@ -14,7 +14,7 @@
 
 use bevy::prelude::Event;
 use bevy::prelude::Entity;
-use crate::PlaceType;
+use crate::PieceType;
 use crate::ExplosionProperties;
 
 #[derive(Event)]
@@ -30,7 +30,7 @@ pub(crate) struct PlaceEvent {
     pub(crate) a : f32,
     pub(crate) owner : u64,
     pub(crate) slot : u8,
-    pub(crate) tp : PlaceType,
+    pub(crate) tp : PieceType,
     pub(crate) free : bool // do we need to fabber check this one? if free is set to true, fabber and territory checks are skipped
 }
 

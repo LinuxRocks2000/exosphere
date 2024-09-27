@@ -14,6 +14,8 @@ derive_macro = { path = "derive-macro/" }
 bevy_rapier2d = { version = "*" }
 bevy_time = "*"
 rand = "*"
+num-traits = "*"
+num-derive = "*"
 
 [profile.dev]
 debug = 0
