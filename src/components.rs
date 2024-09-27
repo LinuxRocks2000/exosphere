@@ -101,7 +101,8 @@ impl Fabber {
             PlaceType::Battleship => self.l_ships >= 3,
             PlaceType::Seed => self.l_econ >= 1,
             PlaceType::Chest => false, // fabbers can never place chests
-            PlaceType::Farmhouse => self.l_econ >= 2
+            PlaceType::Farmhouse => self.l_econ >= 2,
+            PlaceType::BallisticMissile => self.l_missiles >= 1
         }
     }
 }
@@ -278,13 +279,39 @@ pub(crate) struct Farmhouse {
 
 }
 
-#[derive(Component)]
-pub(crate) struct FarmSensor {
-    pub(crate) farm : Entity
+
+pub(crate) enum FieldSensorMode {
+    Unfiltered // don't filter by anything
 }
 
-impl FarmSensor {
-    pub(crate) fn of(farm : Entity) -> Self {
-        Self {farm}
+
+#[derive(Component)]
+pub(crate) struct FieldSensor {
+    pub(crate) mode : FieldSensorMode,
+    pub(crate) attached_to : Entity // TODO: use this reference to the actual object to keep the sensor aligned with it!
+}
+
+impl FieldSensor {
+    pub(crate) fn farmhouse(piece : Entity) -> Self {
+        Self {
+            attached_to : piece,
+            mode : FieldSensorMode::Unfiltered
+        }
+    }
+}
+
+#[derive(Component)]
+pub(crate) struct Missile {
+    pub(crate) decelerator : f32,
+    pub(crate) acc_profile : f32
+}
+
+
+impl Missile {
+    pub(crate) fn ballistic() -> Self {
+        Self {
+            decelerator : 0.01,
+            acc_profile : 8.0
+        }
     }
 }

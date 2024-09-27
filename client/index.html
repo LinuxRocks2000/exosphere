@@ -34,33 +34,41 @@
             <div id="buyshipmenu">
                 <div>
                     <div>
+                        <input type="radio" name="shippicker" id="mpicker-ballistic">
+                        <label for="mpicker-ballistic" --data-place-type="11" --data-price="5">
+                            <img src="res/ballistic_missile_friendly.svg">
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <div>
                         <input type="radio" name="shippicker" id="shippicker-bfighter">
                         <label for="shippicker-bfighter" --data-place-type="0" --data-price="10">
-                            <img src="res/basic_fighter_friendly.svg" height="30px">
+                            <img src="res/basic_fighter_friendly.svg">
                         </label>
                     </div>
                     <div>
                         <input type="radio" name="shippicker" id="shippicker-tfighter">
                         <label for="shippicker-tfighter" --data-place-type="3" --data-price="20">
-                            <img src="res/tie_fighter_friendly.svg" height="30px">
+                            <img src="res/tie_fighter_friendly.svg">
                         </label>
                     </div>
                     <div>
                         <input type="radio" name="shippicker" id="shippicker-sniper">
                         <label for="shippicker-sniper" --data-place-type="4" --data-price="20">
-                            <img src="res/sniper_friendly.svg" height="30px">
+                            <img src="res/sniper_friendly.svg">
                         </label>
                     </div>
                     <div>
                         <input type="radio" name="shippicker" id="shippicker-democruiser">
                         <label for="shippicker-democruiser" --data-place-type="5" --data-price="20">
-                            <img src="res/demolition_cruiser_friendly.svg" height="30px">
+                            <img src="res/demolition_cruiser_friendly.svg">
                         </label>
                     </div>
                     <div>
                         <input type="radio" name="shippicker" id="shippicker-battleship">
                         <label for="shippicker-battleship" --data-place-type="6" --data-price="20">
-                            <img src="res/battleship_friendly.svg" height="30px">
+                            <img src="res/battleship_friendly.svg">
                         </label>
                     </div>
                 </div>
@@ -68,13 +76,13 @@
                     <div>
                         <input type="radio" name="shippicker" id="econpicker-seed">
                         <label for="econpicker-seed" --data-place-type="8" --data-price="5">
-                            <img src="res/seed.svg" height="30px">
+                            <img src="res/seed.svg">
                         </label>
                     </div>
                     <div>
                         <input type="radio" name="shippicker" id="econpicker-fh">
                         <label for="econpicker-fh" --data-place-type="10" --data-price="70">
-                            <img src="res/farmhouse.svg" height="30px">
+                            <img src="res/farmhouse.svg">
                         </label>
                     </div>
                 </div>
@@ -84,6 +92,8 @@
             Loading. Please wait. If this takes more than a few seconds, your connection is probably zonked.
         </div>
         <div style="display: none" id="res">
+            <img src="res/ballistic_missile_friendly.svg" id="ballistic_missile_friendly">
+            <img src="res/ballistic_missile_enemy.svg" id="ballistic_missile_enemy">
             <img src="res/farmhouse.svg" id="farmhouse">
             <img src="res/chest.svg" id="chest">
             <img src="res/seed.svg" id="seed">

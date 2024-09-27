@@ -30,3 +30,4 @@ pub const SMALL_BOMB_TYPE_NUM : u16 = 7;
 pub const SEED_TYPE_NUM : u16 = 8;
 pub const CHEST_TYPE_NUM : u16 = 9;
 pub const FARMHOUSE_TYPE_NUM : u16 = 10;
+pub const BALLISTIC_MISSILE_TYPE_NUM : u16 = 11;

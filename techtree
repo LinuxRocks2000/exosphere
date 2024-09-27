@@ -1,26 +1,38 @@
 this is the initially planned tech/upgrade tree.
 "tech" is just manufacturing capabilities on the fabber bays. each fabber bay can be upgraded to provide more powers. your initial castle has the most powerful fabber bay
-which can build anything; your forts, outposts, and farms have weaker fabber bays. The things that you can make are in this tree:
+which can build anything; your forts and outposts have weaker fabber bays. there are many tiers of technology but the real divide is between the basic tech and the named tech.
+basic tech is in the first few fabber levels and can be placed immediately at your starting castle (but not necessarily at forts/outposts/new castles). it is relatively
+cheap (mostly under $500) and designed to be slightly defense-balanced. there is much less named tech than basic tech; all named tech have a military-sounding codename.
+they are very, very expensive, usually over $1000, and are slightly offensively-balanced. Named tech includes things like the Flytrap turrets and the MADECS missiles.
+The things that you can make are in this tree:
 
 [Missiles] Characterized by moving fast and uncoordinatedly, usually as kinetic weapons but sometimes with an explosive payload. They do not fire bullets. $700/level.
-* Kinetic Missile <base type>: upgraded bullet, basically. Follows a course until it hits something, and does impact damage to it. $5. Level 1.
-* Seeking Missile: missile that follows a course until it notices an enemy ship in range, which it peels off and kinetic-strikes. $10. Level 1.
-* Hypersonic Missile: missile with a small explosive payload. Detonates on impact. $20. Level 2.
+* Ballistic Missile <base type>: upgraded bullet, basically. Follows a course until it hits something, and does impact damage to it. $5. Level 1.
+* Seeking Missile: slowish missile that follows a course until it notices an enemy ship in range, which it peels off and kinetic-strikes. $10. Level 1.
+* Hypersonic Missile: very fast missile with a small explosive payload. Detonates on impact. $20. Level 2.
 * Plasma Rocket: missile that fires a short-range laser out the front, allowing it to drill through rubble and do extra damage to things it hits. $25. Level 3.
 * Cruise Missile: Larger, slower hypersonic missile with a larger explosion radius. $50. Level 4.
+* MADECS: Multiple Air-Deployed Explosive Cluster Swarm. Large, fast missile that separates into 20 large glide bombs focused breadth-first on nearby targets
+             (prioritizes hitting more things over doing more damage to things). Separates at the end of its path or when hit by something else. $700. Level 5.
 
 [Ships] Ships move slower than missiles but are more coordinated. They fire bullets intermittently. $600/level.
 * Fighter <base type>: Small, somewhat-slow ship that fires one minor bullet per 30 play ticks. $10. Level 1.
 * Tie Fighter: Larger ship that moves at the same speed as a Fighter. Has a repeater weapon - fires minor bullets in a 25-5 repeater pattern. Slightly better range. $20. Level 1.
 * Sniper: Small, fast ship that fires one long-range bullet every 120 ticks. $30. Level 1.
+* Fleet Defense Ship: medium-speed ship that fires short range lasers (~40 units) at enemy bullets and missiles. Useful as escort fighters that protect a payload (such as
+                      a tie fighter). $50. Level 2.
 * Demolition Cruiser: Slow ship that fires a huge, long-range explosive bullet every 120 ticks. $60. Level 2.
 * Battleship: Extremely large ship that fires five bullets every 30 play ticks, distributed over its gigantic front surface. Moves a bit slower than basic fighters. Has a
-              ludicrously high health; basically a tank. $200. Level 3.
+              ludicrously high health; basically a tank. $200. Level 4.
+* Scorpion S1 Destroyer: A bit larger than a basic fighter and slightly faster than a tie fighter, the S1 Destroyer fires bullets from two barrels and shoots lasers at nearby
+                         enemy units (including bullets and missiles). $1000. Level 5.
+* Scorpion S2 Ragnarok: Large, slow ship that fires high-yield short-range explosives from two barrels offset at angles, effectively producing a constant cloud of explosions in
+                        front of it. $2000. Level 5.
 
 [Economic] "Farm tools". $50/level.
 * Seed: grows into a chest when inside a farm-field. $5. Level 1.
-* Farmhouse: Projects a "farm field" - a 200 unit radius that matures seeds into chests. $70. Level 2. Upgradeable to 
-             autoplace. Note the implication that, for a solid economy, players will want to place nothing but a farmhouse and six seeds on their first turn! Any less
+* Farmhouse: Projects a "farm field" - a 200 unit radius that matures seeds into chests. $70. Level 2. Upgradeable to  laser harvest and autoplace. Note the implication that,
+             for a solid economy, players will want to place nothing but a farmhouse and six seeds on their first turn! Any other pattern
              will impair their economy throughout the entire game. This leads to a complex balance with missile swarms: if you don't care about building a solid economy, you can
              place just a farmhouse and a single seed, and spend the remaining $25 on missiles - or even forego the economy to afford a much larger missile attack. This is a gambit-style play; if your swarm fails to do significant damage, you will
              quickly find yourself at the mercy of a much stronger opponent, struggling to build fighters while they amp up their laser defenses and prepare large
@@ -29,17 +41,19 @@ which can build anything; your forts, outposts, and farms have weaker fabber bay
 
 [Defense] Defensive pieces are designed to prevent enemies from succesfully infiltrating your territory. Most defenses are closer to buildings than to ships,
             but they're small and simple and can be placed by a fabber. $200/level.
-* Laser Node: Laser nodes near each other fire high-energy lasers between them, creating a nearly impassible gate. Large swarms can effectively overwhelm them, though.
-                Laser nodes also fire lasers with a very short range at enemy objects near them, making them difficult to fight with bullets (although explosives
-                are still effective). $20 each. Level 1.
+* Laser Node: Laser nodes fire lasers between each other to create difficult-to-pass gates. They can destroy a single weapon but can become overwhelmed at larger scales. $10 each. Level 1.
 * Basic Turret: Aims with the low-fidelity turret algorithm (can hit slow-moving or large objects), fires a minor bullet every 20 play ticks. $50. Level 1.
 * Laser Node Long Range: Three times the range of a usual laser node. Useful for covering holes without providing a weak point. Will connect at short range to normal laser nodes.
                           $80. Level 2.
 * Smart Turret: Aims with the high-fidelity turret algorithm and fires a minor bullet every 20 play ticks. $100. Level 2.
-* Blast Turret: Aims with the high-fidelity turret algorithm and fires an explosive bullet every 30 play ticks. $150. Level 3.
+* Blast Turret: Aims with the high-fidelity turret algorithm and fires a glide bomb every 30 play ticks. $150. Level 3.
 * Laser Turret: Fires a high-energy laser into any nearby enemy piece. $250. Level 3.
-* EMP Zone: energy weapon that deploys huge EMPs. EMPs destroy bullets in their range and also slow ships. Don't impede lasers at all. Useful to deploy on your own territory if
+* EMP Zone: energy weapon that deploys large EMFs. EMFs destroy bullets in their range and also slow ships. Don't impede lasers at all. Useful to deploy on your own territory if
             you have heavy laser defenses and aren't worrying about bullets; most enemy ships will be quickly foiled by them. $400. Level 4.
+* Flytrap F1 Vortex: Intelligent air defense turret that fires glide bombs (large explosive bullets) predictively towards inbound ships and missiles. Cannot attack stationary
+                     targets. Designed for mass entry-denial. Placed by a constructor ship. Each shot costs $7. Not particularly effective against faster missiles. $1100. Level 5.
+* Flytrap F2 Cherokee: Intelligent air defense turret that fires tracking missiles to intercept inbound ships and missiles. The Cherokee missiles are unable to reliably
+                        down very-fast-moving targets; hypersonic missiles especially will have no trouble evading them. Each shot costs $80. $1500. Level 5.
 
 [Buildings] Buildings are complex structures that are difficult or impossible to shift out of position. They can't be built by a fabber; they have to be
                 fabbed by a specialized constructor ship. $800/level.
@@ -61,6 +75,6 @@ Fabber levels cost a constant for each tech line times the level. For instance, 
 but economic fabber upgrades only costs $50 a level. Fabber specifications are represented as a size (one of [Large, Medium, Small]) and initials + level for each tech
 section. For instance, outposts have a Small-M0S0E2D1B0 fabber by default.
 
-Aside from providing better fabbers, castles and forts and outposts produce *territory*. The only effect this produces is subtle: non-allied territories can never overlap.
+Aside from providing fabbers, castles and forts and outposts produce *territory*. The only effect territory has is subtle: non-allied territories can never overlap.
 This means that expansion is bottlenecked; you eventually have to destroy enemy bases to take more territory. Castles produce significantly more territory than forts,
 and outposts do not produce territory. It is possible to place in enemy territory if you have a fabber that extends into it.

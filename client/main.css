@@ -94,3 +94,13 @@ body > * {
 #buyshipmenu > div > div > input + label:hover {
     background-color: pink;
 }
+
+#buyshipmenu label > img {
+    max-width: 30px;
+    max-height: 30px;
+}
+
+#buyshipmenu label {
+    display: inline-flex;
+    justify-content: center;
+}

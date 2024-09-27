@@ -226,7 +226,7 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
             }
             if let Ok(chest) = chests.get(evt.piece) {
                 if let Some(mut cl) = clients.get_mut(&evt.responsible) {
-                    cl.collect(50); // kill the chest, collect some dough, that's life, yo!
+                    cl.collect(20); // kill the chest, collect some dough, that's life, yo!
                 }
             }
             if piece.type_indicator == CASTLE_TYPE_NUM {
@@ -258,14 +258,33 @@ fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &
 fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
         mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, Option<&mut Seed>)>,
         explosions : Query<&ExplosionProperties>,
+        velocities : Query<&Velocity>, // we use this to calculate the relative VELOCITY (NOT collision energy - it's physically inaccurate, but idc) and then the damage they incur.
+        // this means at low speeds you can safely puuuuush, but at high speeds you get destroyed
         mut piece_destroy : EventWriter<PieceDestroyedEvent>,
-        farmfields : Query<&FarmSensor>) {
+        sensors : Query<&FieldSensor>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
             let mut one_killer : u64 = 0; // the id of the player that owned the piece that damaged the piece
             let mut two_killer : u64 = 0; // that is one HELL of a sentence
+            if let Ok(v1) = velocities.get(*one) {
+                if let Ok(v2) = velocities.get(*two) {
+                    let r_vel = (v1.linvel - v2.linvel).length();
+                    if r_vel >= 400.0 { // anything slower is nondestructive. every 100 m/s after it does 1 damage, starting from 1.
+                        // because bullets are usually moving at 400.0 and change, bullets will usually do a little over 1 damage. missiles will do quite a bit more.
+                        let d = 1.0 + (r_vel - 400.0) / 100.0;
+                        one_dmg = d;
+                        two_dmg = d;
+                        if let Ok((_, piece_one, _, _)) = pieces.get(*one) {
+                            two_killer = piece_one.owner;
+                        }
+                        if let Ok((_, piece_two, _, _)) = pieces.get(*two) {
+                            one_killer = piece_two.owner;
+                        }
+                    }
+                }
+            }/*
             if let Ok((_, piece_one, bullet_one, _)) = pieces.get(*one) {
                 if let Ok((_, piece_two, bullet_two, _)) = pieces.get(*two) {
                     if bullet_one.is_some() { // if either one of these is a bullet, the collision is *fully destructive* - at least the bullet will be completely destroyed.
@@ -279,17 +298,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                         two_dmg += piece_one.health;
                     }
                 }
-            }
-            if let Ok(farm) = farmfields.get(*one) {
-                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*two) {
-                    seed.growing = true;
-                }
-            }
-            if let Ok(farm) = farmfields.get(*two) {
-                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*one) {
-                    seed.growing = true;
-                }
-            }
+            }*/
             if let Ok(explosion) = explosions.get(*one) {
                 if let Ok((_, _, _, _)) = pieces.get(*two) {
                     two_dmg += explosion.damage;
@@ -317,14 +326,24 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 }
             }
         }
-        if let CollisionEvent::Stopped(one, two, _) = event {
-            if let Ok(farm) = farmfields.get(*one) {
-                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*two) {
-                    seed.growing = false;
+        let (one, two) = match event { CollisionEvent::Started(one, two, _) => (one, two), CollisionEvent::Stopped(one, two, _) => (one, two) };
+        let mut sensor = sensors.get(*one);
+        let mut sensor_is_one = true;
+        if let Err(_) = sensor {
+            sensor_is_one = false;
+            sensor = sensors.get(*two);
+        }
+        if let Ok(sensor) = sensor {
+            let piece = if sensor_is_one {
+                pieces.get_mut(*two)
+            } else {
+                pieces.get_mut(*one)
+            };
+            if let Ok((_, _, _, Some(mut seed))) = piece {
+                if let CollisionEvent::Started(_, _, _) = event {
+                    seed.growing = true;
                 }
-            }
-            if let Ok(farm) = farmfields.get(*two) {
-                if let Ok((_, _, _, Some(mut seed))) = pieces.get_mut(*one) {
+                else {
                     seed.growing = false;
                 }
             }
@@ -336,86 +355,52 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
 struct Placer<'a> (EventWriter<'a, PlaceEvent>);
 
 impl Placer<'_> {
-    fn castle(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+    fn p_simple(&mut self, x : f32, y : f32, client : u64, slot : u8, tp : PlaceType) {
         self.0.send(PlaceEvent {
             x,
             y,
             a : 0.0,
             owner : client,
             slot,
-            tp : PlaceType::Castle,
+            tp,
             free : true
         });
     }
 
-    fn basic_fighter(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
-        self.0.send(PlaceEvent {
-            x, y, a,
-            owner : client,
-            slot,
-            tp : PlaceType::BasicFighter,
-            free : false
-        });
+    fn castle(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+        self.p_simple(x, y, client, slot, PlaceType::Castle);
     }
 
-    fn tie_fighter(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
-        self.0.send(PlaceEvent {
-            x, y, a,
-            owner : client,
-            slot,
-            tp : PlaceType::TieFighter,
-            free : false
-        });
+    fn basic_fighter(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+        self.p_simple(x, y, client, slot, PlaceType::BasicFighter);
     }
 
-    fn sniper(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
-        self.0.send(PlaceEvent {
-            x, y, a,
-            owner : client,
-            slot,
-            tp : PlaceType::Sniper,
-            free : false
-        });
+    fn tie_fighter(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+        self.p_simple(x, y, client, slot, PlaceType::TieFighter);
     }
 
-    fn demolition_cruiser(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
-        self.0.send(PlaceEvent {
-            x, y, a,
-            owner : client,
-            slot,
-            tp : PlaceType::DemolitionCruiser,
-            free : false
-        });
+    fn sniper(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+        self.p_simple(x, y, client, slot, PlaceType::Sniper);
     }
 
-    fn battleship(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
-        self.0.send(PlaceEvent {
-            x, y, a,
-            owner : client,
-            slot,
-            tp : PlaceType::Battleship,
-            free : false
-        });
+    fn demolition_cruiser(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+        self.p_simple(x, y, client, slot, PlaceType::DemolitionCruiser);
+    }
+
+    fn battleship(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+        self.p_simple(x, y, client, slot, PlaceType::Battleship);
     }
 
     fn seed(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
-        self.0.send(PlaceEvent {
-            x, y, a : 0.0,
-            owner,
-            slot,
-            tp : PlaceType::Seed,
-            free : false
-        });
+        self.p_simple(x, y, owner, slot, PlaceType::Seed);
     }
 
     fn farmhouse(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
-        self.0.send(PlaceEvent {
-            x, y, a : 0.0,
-            owner,
-            slot,
-            tp : PlaceType::Farmhouse,
-            free : false
-        });
+        self.p_simple(x, y, owner, slot, PlaceType::Farmhouse);
+    }
+
+    fn ballistic_missile(&mut self, x : f32, y : f32, owner : u64, slot : u8) {
+        self.p_simple(x, y, owner, slot, PlaceType::BallisticMissile);
     }
 
     fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
@@ -484,6 +469,42 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
                 force.torque = 0.0;
                 impulse.impulse = velocity.linvel / inv_mass * -0.1;
                 impulse.torque_impulse = 0.0;
+                if follower.bump() {
+                    if let Some(client) = clients.get_mut(&piece.owner) {
+                        client.send(ServerMessage::StrategyCompletion(entity.index(), follower.len()));
+                    }
+                }
+                else {
+                    match follower.get_endcap() {
+                        EndNode::Rotation(r) => {
+                            impulse.torque_impulse = (-loopify(r, cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
+                        }
+                        EndNode::None => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, &Transform, &Missile, &mut PathFollower, &Collider, &GamePiece)>, mut clients : ResMut<ClientMap>) {
+    for (entity, mut impulse, velocity, transform, missile, mut follower, collider, piece) in missiles.iter_mut() {
+        if let Some(next) = follower.get_next() {
+            let gpos = match next {
+                PathNode::StraightTo(x, y) => Vec2 { x, y },
+                PathNode::Teleportal(_, _) => Vec2::ZERO // TODO: IMPLEMENT
+            };
+            let cpos = transform.translation.truncate();
+            let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
+            let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
+            if (gpos - cpos).length() > 30.0 {
+                impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.acc_profile - velocity.linvel / inv_mass * missile.decelerator;
+                impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 50.0 / inv_mass - velocity.angvel / inv_mass * 30.0;
+                //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
+                // this can produce odd effects at close approach, hence the normalizer code
+                //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
+            }
+            else {
                 if follower.bump() {
                     if let Some(client) = clients.get_mut(&piece.owner) {
                         client.send(ServerMessage::StrategyCompletion(entity.index(), follower.len()));
@@ -590,27 +611,27 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                         match t {
                                             BASIC_FIGHTER_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(10) {
-                                                    place.basic_fighter(x, y, 0.0, id, slot);
+                                                    place.basic_fighter(x, y, id, slot);
                                                 }
                                             },
                                             TIE_FIGHTER_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(20) {
-                                                    place.tie_fighter(x, y, 0.0, id, slot);
+                                                    place.tie_fighter(x, y, id, slot);
                                                 }
                                             },
                                             SNIPER_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(30) {
-                                                    place.sniper(x, y, 0.0, id, slot);
+                                                    place.sniper(x, y, id, slot);
                                                 }
                                             },
                                             DEMOLITION_CRUISER_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(60) {
-                                                    place.demolition_cruiser(x, y, 0.0, id, slot);
+                                                    place.demolition_cruiser(x, y, id, slot);
                                                 }
                                             },
                                             BATTLESHIP_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(200) {
-                                                    place.battleship(x, y, 0.0, id, slot);
+                                                    place.battleship(x, y, id, slot);
                                                 }
                                             }
                                             SEED_TYPE_NUM => {
@@ -621,6 +642,11 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             FARMHOUSE_TYPE_NUM => {
                                                 if clients.get_mut(&id).unwrap().charge(70) {
                                                     place.farmhouse(x, y, id, slot);
+                                                }
+                                            },
+                                            BALLISTIC_MISSILE_TYPE_NUM => {
+                                                if clients.get_mut(&id).unwrap().charge(5) {
+                                                    place.ballistic_missile(x, y, id, slot);
                                                 }
                                             }
                                             _ => {
@@ -816,7 +842,8 @@ enum PlaceType {
     Battleship,
     Seed,
     Chest,
-    Farmhouse
+    Farmhouse,
+    BallisticMissile
 }
 
 fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
@@ -826,7 +853,7 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
         let mut piece = commands.spawn((RigidBody::Dynamic, Velocity::zero(), TransformBundle::from(transform), ExternalForce::default(), ExternalImpulse::default(), Damping {
             linear_damping : 0.0,// todo: clear out unnecessary components (move them to the match statement so we don't have, say, ExternalImpulse on a static body)
             angular_damping : 0.0
-        }));
+        }, ActiveEvents::COLLISION_EVENTS));
         // fabber check
         let mut isfab = false;
         if ev.free {
@@ -914,13 +941,18 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 piece.insert((Collider::cuboid(25.0, 25.0), Farmhouse {}));
                 health = 2.0;
                 FARMHOUSE_TYPE_NUM
+            },
+            PlaceType::BallisticMissile => {
+                piece.insert((Collider::cuboid(17.5, 10.0), Missile::ballistic(), PathFollower::start(ev.x, ev.y)));
+                health = 1.0;
+                BALLISTIC_MISSILE_TYPE_NUM
             }
         };
         piece.insert(GamePiece::new(t_num, ev.owner, ev.slot, health));
         let _ = broadcast.send(ServerMessage::ObjectCreate(ev.x, ev.y, ev.a, ev.owner, piece.id().index(), t_num));
         if let PlaceType::Farmhouse = ev.tp {
             let id = piece.id();
-            commands.spawn((FarmSensor::of(id), Collider::ball(100.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
+            commands.spawn((FieldSensor::farmhouse(id), Collider::ball(100.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
         }
     }
 }
@@ -1164,7 +1196,7 @@ async fn main() {
         .add_systems(
             PlaySchedule,
             (
-                move_ships, shoot, ttl, seed_mature, handle_collisions
+                move_ships, move_missiles, shoot, ttl, seed_mature, handle_collisions
             )
         )
         .init_schedule(PlaySchedule)
