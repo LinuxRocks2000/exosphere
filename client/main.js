@@ -35,6 +35,12 @@ const VERSION = 0; // bump for possibly-breaking protocol or gameplay changes
 
 const TEST = ["EXOSPHERE", 128, 4096, 115600, 123456789012345n, -64, -4096, -115600, -123456789012345n, -4096.51220703125, -8192.756, VERSION];
 
+const CAN_TRACK = [15];
+
+function canTrack(thing) {
+    return CAN_TRACK.indexOf(thing.type) != -1;
+}
+
 const MS_PER_FRAME = 1000 / 30;
 
 var viewX = 0; // in world units, correspond to the center of the screen
@@ -244,6 +250,12 @@ function mainloop() {
         else if (item.type == 13) {
             ctx.drawImage(getRes("seeking_missile_" + fString), -17.5, -10);
         }
+        else if (item.type == 14) {
+            ctx.drawImage(getRes("hypersonic_missile_" + fString), -17.5, -5);
+        }
+        else if (item.type == 15) {
+            ctx.drawImage(getRes("tracking_missile_" + fString), -17.5, -8.5);
+        }
         ctx.rotate(-a);
         ctx.translate(-x, -y);
         var m_dx = mouseX - x;
@@ -258,20 +270,27 @@ function mainloop() {
                 // the important semantics are in how the user interacts with it (you can't *move* the strategy post if it's on a gamepiece)
                 // and how the game engines simulate it (ships won't shoot while on direct approach to a teleportal, lest they destroy it and ruin their route)
                 // other gamepieces must be the end of a ship route *unless* they are a teleportal
+                let pos = [];
                 if (Array.isArray(strat)) {
-                    ctx.beginPath();
-                    ctx.lineWidth = 1;
-                    ctx.strokeStyle = "blue";
-                    ctx.moveTo(lastPos[0], lastPos[1]);
-                    ctx.lineTo(strat[0], strat[1]);
-                    ctx.stroke();
-                    ctx.beginPath();
-                    ctx.fillStyle = "blue";
-                    ctx.arc(strat[0], strat[1], 3, 0, Math.PI * 2);
-                    ctx.fill();
-                    lastPos[0] = strat[0];
-                    lastPos[1] = strat[1];
+                    pos = strat;
                 }
+                else {
+                    if (strat.x_n && strat.y_n) {
+                        pos = [strat.x_n, strat.y_n];
+                    }
+                }
+                ctx.beginPath();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = "blue";
+                ctx.moveTo(lastPos[0], lastPos[1]);
+                ctx.lineTo(pos[0], pos[1]);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.fillStyle = "blue";
+                ctx.arc(pos[0], pos[1], 3, 0, Math.PI * 2);
+                ctx.fill();
+                lastPos[0] = pos[0];
+                lastPos[1] = pos[1];
             });
             if (item.strategy_endcap) {
                 var tx = 0;
@@ -373,7 +392,7 @@ function canUpdateStrategy(obj) {
     if (obj.owner != m_id) {
         return false; // we can never move an object that isn't ours
     }
-    return [0, 3, 4, 5, 6, 11, 13].indexOf(obj.type) != -1;
+    return [0, 3, 4, 5, 6, 11, 13, 14, 15].indexOf(obj.type) != -1;
 }
 
 function play() {
@@ -388,7 +407,12 @@ function play() {
         }
         if (has_placed_castle) {
             let did_place = false;
-            if (should_place_node && is_playing && is_strategy) { // do insert checks
+            if (hovered && selected && is_playing && is_strategy && canTrack(selected)) {
+                selected.strategy.push(hovered);
+                protocol.StrategyTargetAdd(selected.id, hovered.id);
+                did_place = true;
+            }
+            else if (should_place_node && is_playing && is_strategy) { // do insert checks
                 var nearest_projection = [];
                 var nearest_index = 0;
                 var nearest_val = Infinity;

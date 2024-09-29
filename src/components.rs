@@ -377,17 +377,39 @@ impl Missile {
             decelerator : 0.01,
             acc_profile : 8.0,
             target_lock : None,
-            intercept_burn : 200.0,
+            intercept_burn : 0.0,
             intercept_burn_power : 60.0
         }
     }
+
     pub(crate) fn cruise() -> Self { // accelerates faster but has a lower max speed
         Self {
             decelerator : 0.04,
             acc_profile : 18.0,
             target_lock : None,
-            intercept_burn : 200.0,
+            intercept_burn : 0.0,
             intercept_burn_power : 60.0
         }
     }
+
+    pub(crate) fn hypersonic() -> Self {
+        Self {
+            decelerator : 0.015,
+            acc_profile : 24.0,
+            target_lock : None,
+            intercept_burn : 0.0,
+            intercept_burn_power : 60.0
+        }
+    }
+
+    pub(crate) fn with_intercept_burn(mut self, burn : f32) -> Self {
+        self.intercept_burn = burn;
+        self
+    }
+}
+
+
+#[derive(Component)]
+pub(crate) struct CollisionExplosion { // entities with this component explode whenever they hit anything
+    pub(crate) explosion : ExplosionProperties
 }

@@ -18,7 +18,7 @@ use bevy::prelude::Entity;
 #[derive(Copy, Clone, Debug)]
 pub enum PathNode {
     StraightTo(f32, f32),
-    Teleportal(Entity, Entity) // entrypoint, exitpoint
+    Target(Entity)
 }
 
 #[derive(Copy, Clone)]
@@ -35,9 +35,10 @@ use bevy::prelude::Component;
 #[derive(Component)]
 pub struct PathFollower { // follow a path.
     nodes : VecDeque<PathNode>,
-    end : EndNode
+    end : EndNode,
+    can_track : bool // can this pathfollower be used to track an object on the board?
     // empty paths are "unlinked"; unlinked objects will not attempt to move at all.
-    // path following will never clear the last node in a path (this is the endcap node, and often has extra metadata associated with it).
+    // path following will never clear the last node in a path (this is the endcap node, and often has endnode data associated with it).
 }
 
 
@@ -63,14 +64,29 @@ impl PathFollower {
     pub fn start(x : f32, y : f32) -> Self {
         Self {
             nodes : VecDeque::from([PathNode::StraightTo(x, y)]),
-            end : EndNode::None
+            end : EndNode::None,
+            can_track : false
         }
+    }
+
+    pub fn with_tracking(mut self) -> Self {
+        self.can_track = true;
+        self
     }
 
     pub fn insert_point(&mut self, _index : u16, x : f32, y : f32) {
         let index : usize = _index as usize;
         if index <= self.nodes.len() {
             self.nodes.insert(index, PathNode::StraightTo(x, y));
+        }
+    }
+
+    pub fn insert_target(&mut self, _index : u16, t : Entity) {
+        if self.can_track {
+            let index : usize = _index as usize;
+            if index <= self.nodes.len() {
+                self.nodes.insert(index, PathNode::Target(t));
+            }
         }
     }
 

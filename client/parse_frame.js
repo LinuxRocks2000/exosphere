@@ -366,6 +366,13 @@ const OUTGOING_PROTOCOL = [
             'u32',
             'f32'
         ]
+    },
+    {
+        name: "StrategyTargetAdd",
+        layout: [
+            'u32',
+            'u32'
+        ]
     }
 ];
 

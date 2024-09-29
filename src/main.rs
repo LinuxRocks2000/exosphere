@@ -266,13 +266,31 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
         mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, Option<&mut Seed>)>,
         mut missiles : Query<&mut Missile>,
         farms : Query<&Farmhouse>,
+        explode_on_collision : Query<(Entity, &CollisionExplosion, &Transform)>,
         explosions : Query<&ExplosionProperties>,
         velocities : Query<&Velocity>, // we use this to calculate the relative VELOCITY (NOT collision energy - it's physically inaccurate, but idc) and then the damage they incur.
         // this means at low speeds you can safely puuuuush, but at high speeds you get destroyed
         mut piece_destroy : EventWriter<PieceDestroyedEvent>,
+        mut explosion_event : EventWriter<ExplosionEvent>,
         sensors : Query<(Entity, &FieldSensor)>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
+            if let Ok((entity, explode, pos)) = explode_on_collision.get(*one) {
+                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : 0 });
+                explosion_event.send(ExplosionEvent {
+                    x : pos.translation.x,
+                    y : pos.translation.y,
+                    props : explode.explosion
+                });
+            }
+            if let Ok((entity, explode, pos)) = explode_on_collision.get(*two) {
+                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : 0 });
+                explosion_event.send(ExplosionEvent {
+                    x : pos.translation.x,
+                    y : pos.translation.y,
+                    props : explode.explosion
+                });
+            }
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
             let mut one_killer : u64 = 0; // the id of the player that owned the piece that damaged the piece
@@ -283,7 +301,8 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                     let r_vel = (v1.linvel - v2.linvel).length();
                     if r_vel >= 400.0 { // anything slower is nondestructive. every 100 m/s after it does 1 damage, starting from 1.
                         // because bullets are usually moving at 400.0 and change, bullets will usually do a little over 1 damage. missiles will do quite a bit more.
-                        let d = (r_vel - 350.0) / 100.0;
+                        let d = (r_vel - 350.0).sqrt() / 10.0;
+                        println!("collision d: {}, rvel: {}", d, r_vel);
                         one_dmg = d;
                         two_dmg = d;
                         if let Ok((_, piece_one, _, _)) = pieces.get(*one) {
@@ -430,12 +449,20 @@ fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &Explosi
 }
 
 
-fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velocity, &Transform, &Ship, &mut PathFollower, &GamePiece, &Collider, Entity)>, mut clients : ResMut<ClientMap>) {
+fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velocity, &Transform, &Ship, &mut PathFollower, &GamePiece, &Collider, Entity)>, targetables : Query<&Transform>, mut clients : ResMut<ClientMap>) {
     for (mut force, mut impulse, velocity, transform, ship, mut follower, piece, collider, entity) in ships.iter_mut() {
         if let Some(next) = follower.get_next() {
             let gpos = match next {
                 PathNode::StraightTo(x, y) => Vec2 { x, y },
-                PathNode::Teleportal(_, _) => Vec2::ZERO // TODO: IMPLEMENT
+                PathNode::Target(ent) => {
+                    if let Ok(tg) = targetables.get(ent) {
+                        tg.translation.truncate()
+                    }
+                    else {
+                        follower.bump();
+                        continue;
+                    }
+                }
             };
             let cpos = transform.translation.truncate();
             let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
@@ -476,12 +503,20 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
     }
 }
 
-fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, &Transform, &mut Missile, &mut PathFollower, &Collider, &GamePiece)>, targets : Query<&Transform>, mut clients : ResMut<ClientMap>) {
+fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, &Transform, &mut Missile, &mut PathFollower, &Collider, &GamePiece)>, targetables : Query<&Transform>, targets : Query<&Transform>, mut clients : ResMut<ClientMap>) {
     for (entity, mut impulse, velocity, transform, mut missile, mut follower, collider, piece) in missiles.iter_mut() {
         if let Some(next) = follower.get_next() {
             let mut gpos = match next {
                 PathNode::StraightTo(x, y) => Vec2 { x, y },
-                PathNode::Teleportal(_, _) => Vec2::ZERO // TODO: IMPLEMENT
+                PathNode::Target(ent) => {
+                    if let Ok(tg) = targetables.get(ent) {
+                        tg.translation.truncate()
+                    }
+                    else {
+                        follower.bump();
+                        continue;
+                    }
+                }
             };
             if let Some(lock) = missile.target_lock {
                 if let Ok(target) = targets.get(lock) {
@@ -500,10 +535,11 @@ fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, 
                 if delta < missile.intercept_burn {
                     impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.intercept_burn_power;
                     impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.2; // linear deviation correction thrusters
-                    impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 100.0 / inv_mass - velocity.angvel / inv_mass * 100.0;
+                    impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 200.0 / inv_mass - velocity.angvel / inv_mass * 200.0;
                 }
                 else {
                     impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.acc_profile - velocity.linvel / inv_mass * missile.decelerator;
+                    impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.05; // linear deviation correction thrusters
                     impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 50.0 / inv_mass - velocity.angvel / inv_mass * 30.0;
                 }
                 //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
@@ -709,6 +745,32 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                                             }
                                         }
                                     }
+                                },
+                                ClientMessage::StrategyTargetAdd(piece_id, t) => {
+                                    if state.playing && state.strategy {
+                                        let mut ent : Option<Entity> = None;
+                                        for (entity, _, _, _, _) in pieces.iter() {
+                                            if entity.index() == t {
+                                                ent = Some(entity);
+                                                break;
+                                            }
+                                        }
+                                        if let Some(target) = ent {
+                                            for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
+                                                if entity.index() == piece_id {
+                                                    if let Some(mut pathfollower) = pathfollower {
+                                                        if piece.owner == id {
+                                                            let pos = pathfollower.len();
+                                                            pathfollower.insert_target(pos, target);
+                                                        }
+                                                    }
+                                                    else {
+                                                        println!("whoops");
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 _ => {
                                     println!("error: client sent unimplemented frame! dropping client.");
@@ -901,7 +963,25 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 health = 1.0;
             },
             PieceType::SeekingMissile => {
-                piece.insert((Collider::cuboid(17.5, 10.0), Missile::cruise(), PathFollower::start(ev.x, ev.y)));
+                piece.insert((Collider::cuboid(17.5, 10.0), Missile::cruise().with_intercept_burn(200.0), PathFollower::start(ev.x, ev.y)));
+                health = 1.0;
+            },
+            PieceType::HypersonicMissile => {
+                piece.insert((Collider::cuboid(17.5, 5.0), Missile::hypersonic(), PathFollower::start(ev.x, ev.y), CollisionExplosion {
+                    explosion : ExplosionProperties {
+                        damage : 1.0,
+                        radius : 100.0
+                    }
+                }));
+                health = 1.0;
+            },
+            PieceType::TrackingMissile => {
+                piece.insert((Collider::cuboid(17.5, 8.5), Missile::hypersonic().with_intercept_burn(200.0), PathFollower::start(ev.x, ev.y).with_tracking(), CollisionExplosion {
+                    explosion : ExplosionProperties {
+                        damage : 1.0,
+                        radius : 100.0
+                    }
+                }));
                 health = 1.0;
             },
             PieceType::Bullet => {}, // not implemented: bullets must be created by the discharge_barrel function
@@ -945,7 +1025,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
     let mut did_something = false;
     for ev in events.read() {
         if !clients.contains_key(&ev.client) { // if the client's already disconnected, we can't exactly tell them they lost
-            state.currently_playing -= 1;
+            state.currently_playing -= 1; // TODO: fix the bug where a client that hasn't actually placed a castle disconnects
         }
         else {
             let mut has_territory = false;

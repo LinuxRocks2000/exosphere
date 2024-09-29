@@ -10,7 +10,7 @@ The things that you can make are in this tree:
 * Ballistic Missile <base type>: upgraded bullet, basically. Follows a course until it hits something, and does impact damage to it. $5. Level 1.
 * Seeking Missile: slowish missile that follows a course until it notices an enemy ship in range, which it peels off and kinetic-strikes. $10. Level 1.
 * Hypersonic Missile: very fast missile with a small explosive payload. Detonates on impact. $20. Level 2.
-* Plasma Rocket: missile that fires a short-range laser out the front, allowing it to drill through rubble and do extra damage to things it hits. $25. Level 3.
+* Tracking Missile: essentially a ballistic missile with a warhead. Supports target-locking endnodes. $30. Level 3.
 * Cruise Missile: Larger, slower hypersonic missile with a larger explosion radius. $50. Level 4.
 * MADECS: Multiple Air-Deployed Explosive Cluster Swarm. Large, fast missile that separates into 20 large glide bombs focused breadth-first on nearby targets
              (prioritizes hitting more things over doing more damage to things). Separates at the end of its path or when hit by something else. $700. Level 5.

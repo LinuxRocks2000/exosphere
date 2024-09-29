@@ -58,7 +58,9 @@ pub(crate) enum PieceType {
     Farmhouse = 10,
     BallisticMissile = 11,
     FleetDefenseShip = 12,
-    SeekingMissile = 13
+    SeekingMissile = 13,
+    HypersonicMissile = 14,
+    TrackingMissile = 15
 }
 
 
@@ -75,6 +77,8 @@ impl PieceType {
             Self::BallisticMissile => 5,
             Self::Farmhouse => 70,
             Self::SeekingMissile => 10,
+            Self::HypersonicMissile => 20,
+            Self::TrackingMissile => 30,
             _ => 0
         }
     }
@@ -82,8 +86,8 @@ impl PieceType {
     pub(crate) fn user_placeable(&self) -> bool {
         match self {
             Self::BasicFighter | Self::TieFighter | Self::Sniper |
-            Self::DemolitionCruiser | Self::Battleship | Self::Seed |
-            Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile |
+            Self::DemolitionCruiser | Self::Battleship | Self::Seed | Self::TrackingMissile |
+            Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile | Self::HypersonicMissile |
             Self::FleetDefenseShip => true, // if you want a type to be user placeable, just add it to this lil' blob.
             _ => false
         }
@@ -100,6 +104,8 @@ impl PieceType {
             Self::Farmhouse => FabLevels::econ(2),
             Self::BallisticMissile => FabLevels::missiles(1),
             Self::SeekingMissile => FabLevels::missiles(1),
+            Self::HypersonicMissile => FabLevels::missiles(2),
+            Self::TrackingMissile => FabLevels::missiles(3),
             _ => FabLevels::default()
         }
     }
