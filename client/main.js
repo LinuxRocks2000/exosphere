@@ -209,54 +209,80 @@ function mainloop() {
         var a = item.a_o + loopify(item.a_o, item.a_n) * delta;
         ctx.translate(x, y);
         ctx.rotate(a);
+        let yminus = 0;
         if (item.type == 0) {
             ctx.drawImage(getRes("basic_fighter_" + fString), -41/2, -41/2);
+            yminus = 41/2;
         }
         else if (item.type == 1) {
             ctx.drawImage(getRes("castle_" + fString), -30, -30);
+            yminus = 30;
         }
         else if (item.type == 2) {
             ctx.fillStyle = "white";
             ctx.fillRect(-2.5, -2.5, 5, 5);
+            yminus = 2.5;
         }
         else if (item.type == 3) {
             ctx.drawImage(getRes("tie_fighter_" + fString), -20, -25);
+            yminus = 25;
         }
         else if (item.type == 4) {
             ctx.drawImage(getRes("sniper_" + fString), -30, -15);
+            yminus = 15;
         }
         else if (item.type == 5) {
             ctx.drawImage(getRes("demolition_cruiser_" + fString), -20, -20);
+            yminus = 20;
         }
         else if (item.type == 6) {
             ctx.drawImage(getRes("battleship_" + fString), -75, -100);
+            yminus = 100;
         }
         else if (item.type == 7) {
             ctx.fillStyle = "white";
             ctx.fillRect(-5, -5, 10, 10);
+            yminus = 5;
         }
         else if (item.type == 8) {
             ctx.drawImage(getRes("seed"), -3.5, -3.5);
+            yminus = 3.5;
         }
         else if (item.type == 9) {
             ctx.drawImage(getRes("chest"), -10, -10);
+            yminus = 10;
         }
         else if (item.type == 10) {
             ctx.drawImage(getRes("farmhouse"), -25, -25);
+            yminus = 25;
         }
         else if (item.type == 11) {
             ctx.drawImage(getRes("ballistic_missile_" + fString), -17.5, -10);
+            yminus = 10;
         }
         else if (item.type == 13) {
             ctx.drawImage(getRes("seeking_missile_" + fString), -17.5, -10);
+            yminus = 10;
         }
         else if (item.type == 14) {
             ctx.drawImage(getRes("hypersonic_missile_" + fString), -17.5, -5);
+            yminus = 5;
         }
         else if (item.type == 15) {
             ctx.drawImage(getRes("tracking_missile_" + fString), -17.5, -8.5);
+            yminus = 8.5;
+        }
+        else if (item.type == 16) {
+            ctx.drawImage(getRes("cruise_missile_" + fString), -17.5, -5);
+            yminus = 5;
         }
         ctx.rotate(-a);
+        if (item.health != 1.0) {
+            ctx.fillStyle = "#BBBBBB";
+            ctx.fillRect(-25, -yminus - 10, 50, 5);
+            ctx.fillStyle = "red";
+            ctx.fillRect(-25, -yminus - 10, 50 * item.health, 5);
+        }
         ctx.translate(-x, -y);
         var m_dx = mouseX - x;
         var m_dy = mouseY - y;
@@ -392,7 +418,7 @@ function canUpdateStrategy(obj) {
     if (obj.owner != m_id) {
         return false; // we can never move an object that isn't ours
     }
-    return [0, 3, 4, 5, 6, 11, 13, 14, 15].indexOf(obj.type) != -1;
+    return [0, 3, 4, 5, 6, 11, 13, 14, 15, 16].indexOf(obj.type) != -1;
 }
 
 function play() {
@@ -584,6 +610,7 @@ function play() {
             owner : owner,
             type: type,
             id: id,
+            health: 1.0,
             strategy_endcap: undefined,
             strategy: [[x, y]]
         }
@@ -684,6 +711,9 @@ function play() {
     });
     connection.onMessage("Explosion", (x, y, rad, dmg) => {
         explosions.push([x, y, rad, dmg]);
+    });
+    connection.onMessage("Health", (id, health) => {
+        pieces[id].health = health;
     });
     document.getElementById("loginmenu").style.display = "none";
     document.getElementById("waitscreen").style.display = "";

@@ -293,6 +293,13 @@ const INCOMING_PROTOCOL = [
             'f32', //r
             'f32'  //d
         ]
+    },
+    {
+        name: "Health",
+        layout: [
+            'u32',
+            'f32'
+        ]
     }
 ];
 

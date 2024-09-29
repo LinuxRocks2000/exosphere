@@ -31,6 +31,7 @@ pub(crate) struct GamePiece {
     // but for now it's convenient
     pub(crate) last_update_pos : Vec2,
     pub(crate) last_update_ang : f32,
+    pub(crate) start_health : f32,
     pub(crate) health : f32
 }
 
@@ -46,6 +47,7 @@ impl GamePiece {
                 y : 0.0
             },
             last_update_ang : 0.0,
+            start_health : health,
             health : health
         }
     }

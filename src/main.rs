@@ -163,14 +163,14 @@ fn discharge_barrel(commands : &mut Commands, owner : u64, barrel : u16, gun : &
     transform.translation += (Vec2::from_angle(ang).perp() * gun.barrel_spacing * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5)).extend(0.0);
     match gun.bullets {
         Bullets::MinorBullet(range) => {
-            let piece = commands.spawn((GamePiece::new(PieceType::Bullet, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
+            let piece = commands.spawn((GamePiece::new(PieceType::Bullet, owner, 0, 0.5), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
                 linear_damping : 0.0,
                 angular_damping : 0.0
             }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
             let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), PieceType::Bullet as u16));
         },
         Bullets::Bomb(_, range) => {
-            let piece = commands.spawn((GamePiece::new(PieceType::SmallBomb, owner, 0, 1.0), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
+            let piece = commands.spawn((GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
                 linear_damping : 0.0,
                 angular_damping : 0.0
             }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
@@ -272,7 +272,8 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
         // this means at low speeds you can safely puuuuush, but at high speeds you get destroyed
         mut piece_destroy : EventWriter<PieceDestroyedEvent>,
         mut explosion_event : EventWriter<ExplosionEvent>,
-        sensors : Query<(Entity, &FieldSensor)>) {
+        sensors : Query<(Entity, &FieldSensor)>,
+        clients : Res<ClientMap>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             if let Ok((entity, explode, pos)) = explode_on_collision.get(*one) {
@@ -299,10 +300,9 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             if let Ok(v1) = velocities.get(*one) {
                 if let Ok(v2) = velocities.get(*two) {
                     let r_vel = (v1.linvel - v2.linvel).length();
-                    if r_vel >= 400.0 { // anything slower is nondestructive. every 100 m/s after it does 1 damage, starting from 1.
+                    if r_vel >= 400.0 { // anything slower is nondestructive.
                         // because bullets are usually moving at 400.0 and change, bullets will usually do a little over 1 damage. missiles will do quite a bit more.
                         let d = (r_vel - 350.0).sqrt() / 10.0;
-                        println!("collision d: {}, rvel: {}", d, r_vel);
                         one_dmg = d;
                         two_dmg = d;
                         if let Ok((_, piece_one, _, _)) = pieces.get(*one) {
@@ -327,6 +327,10 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             if one_dmg != 0.0 {
                 if let Ok((entity_one, mut piece_one, _, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
+                    if let Some(client) = clients.get(&piece_one.owner) {
+                        println!("health update");
+                        client.send(ServerMessage::Health(entity_one.index(), piece_one.health / piece_one.start_health));
+                    }
                     if piece_one.health <= 0.0 {
                         piece_destroy.send(PieceDestroyedEvent { piece : entity_one, responsible : one_killer });
                     }
@@ -335,6 +339,10 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             if two_dmg != 0.0 {
                 if let Ok((entity_two, mut piece_two, _, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
+                    if let Some(client) = clients.get(&piece_two.owner) {
+                        println!("health update");
+                        client.send(ServerMessage::Health(entity_two.index(), piece_two.health / piece_two.start_health));
+                    }
                     if piece_two.health <= 0.0 {
                         piece_destroy.send(PieceDestroyedEvent { piece : entity_two, responsible : two_killer });
                     }
@@ -587,6 +595,9 @@ fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, 
                             }
                         }
                         state.currently_attached_players -= 1;
+                        if clients[&id].alive {
+                            state.currently_playing -= 1;
+                        }
                         clients.remove(&id);
                         client_killed.send(ClientKilledEvent { client : id });
                     },
@@ -984,6 +995,14 @@ fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : 
                 }));
                 health = 1.0;
             },
+            PieceType::CruiseMissile => {
+                piece.insert((Collider::cuboid(17.5, 5.0), Missile::cruise(), PathFollower::start(ev.x, ev.y), CollisionExplosion {
+                    explosion : ExplosionProperties {
+                        damage : 4.0,
+                        radius : 200.0
+                    }
+                }));
+            },
             PieceType::Bullet => {}, // not implemented: bullets must be created by the discharge_barrel function
             PieceType::SmallBomb => {}, // same
             PieceType::FleetDefenseShip => {} // TODO: fleet defense ships
@@ -1024,10 +1043,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
     // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
     let mut did_something = false;
     for ev in events.read() {
-        if !clients.contains_key(&ev.client) { // if the client's already disconnected, we can't exactly tell them they lost
-            state.currently_playing -= 1; // TODO: fix the bug where a client that hasn't actually placed a castle disconnects
-        }
-        else {
+        if clients.contains_key(&ev.client) { // if the client's already disconnected, we can't exactly tell them they lost
             let mut has_territory = false;
             for (territory, piece, _) in pieces.iter() {
                 if territory.is_some() && piece.owner == ev.client {

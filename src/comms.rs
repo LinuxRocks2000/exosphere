@@ -75,7 +75,8 @@ pub(crate) enum ServerMessage { // server -> client
     Disconnect,
     Money(u64, u32), // set the money amount for a client
     // in the future we may want to be able to see the money of our allies, so the id tag could be useful
-    Explosion(f32, f32, f32, f32) // x, y, radius, damage: an explosion happened! the client should render it for one frame and then kill it
+    Explosion(f32, f32, f32, f32), // x, y, radius, damage: an explosion happened! the client should render it for one frame and then kill it
+    Health(u32, f32), // (id, health): tell a player about the current health of one of its pieces
 }
 
 
