@@ -30,11 +30,10 @@ use warp::Filter;
 use futures_util::{StreamExt, SinkExt};
 use tokio::sync::{Mutex, mpsc, broadcast};
 use std::sync::Arc;
-use std::collections::HashMap;
 use bevy::ecs::schedule::ScheduleLabel;
 use std::f32::consts::PI;
 use rand::Rng;
-use num_traits::FromPrimitive;
+use std::collections::HashMap;
 
 
 pub mod protocol;
@@ -63,8 +62,14 @@ use components::*;
 pub mod types;
 use types::*;
 
+mod systems;
+use systems::*;
 
-struct Client {
+pub mod resources;
+use resources::*;
+
+
+pub struct Client {
     id : u64,
     banner : String,
     slot : u8,
@@ -72,38 +77,6 @@ struct Client {
     has_placed_castle : bool,
     alive : bool,
     money : u32 // if I make it a u16 richard will crash the server by somehow farming up >66k money
-}
-
-
-// todo: break up GameConfig and GameState into smaller structs for better parallelism
-#[derive(Resource)]
-struct GameConfig {
-    width : f32,
-    height : f32,
-    wait_period : u16, // time it waits before the game starts
-    play_period : u16, // length of a play period
-    strategy_period : u16, // length of a strategy period
-    max_player_slots : u16,
-    min_player_slots : u16
-}
-
-
-#[derive(Resource)]
-struct GameState {
-    playing : bool,
-    io : bool,
-    strategy : bool,
-    tick : u16,
-    time_in_stage : u16,
-    currently_attached_players : u16, // the number of players CONNECTED
-    currently_playing : u16 // the number of players with territory
-}
-
-
-impl GameState {
-    fn get_state_byte(&self) -> u8 { // todo: use bit shifting
-        self.io as u8 * 128 + self.playing as u8 * 64 + self.strategy as u8 * 32
-    }
 }
 
 
@@ -136,22 +109,6 @@ impl Client {
 enum Bullets {
     MinorBullet(u16), // simple bullet with range
     Bomb(ExplosionProperties, u16) // properties of the explosion we're boutta detonate, range of the bullet
-}
-
-
-#[derive(Copy, Clone, Component)]
-struct ExplosionProperties {
-    radius : f32,
-    damage : f32
-}
-
-impl ExplosionProperties {
-    fn small() -> Self {
-        Self {
-            radius : 100.0,
-            damage : 2.0
-        }
-    }
 }
 
 
@@ -268,11 +225,11 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
         farms : Query<&Farmhouse>,
         explode_on_collision : Query<(Entity, &CollisionExplosion, &Transform)>,
         explosions : Query<&ExplosionProperties>,
-        velocities : Query<&Velocity>, // we use this to calculate the relative VELOCITY (NOT collision energy - it's physically inaccurate, but idc) and then the damage they incur.
+        velocities : Query<&Velocity, Without<StaticWall>>, // we use this to calculate the relative VELOCITY (NOT collision energy - it's physically inaccurate, but idc) and then the damage they incur.
         // this means at low speeds you can safely puuuuush, but at high speeds you get destroyed
         mut piece_destroy : EventWriter<PieceDestroyedEvent>,
         mut explosion_event : EventWriter<ExplosionEvent>,
-        sensors : Query<(Entity, &FieldSensor)>,
+        sensors : Query<&FieldSensor>,
         clients : Res<ClientMap>) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
@@ -328,7 +285,6 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 if let Ok((entity_one, mut piece_one, _, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
                     if let Some(client) = clients.get(&piece_one.owner) {
-                        println!("health update");
                         client.send(ServerMessage::Health(entity_one.index(), piece_one.health / piece_one.start_health));
                     }
                     if piece_one.health <= 0.0 {
@@ -340,7 +296,6 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 if let Ok((entity_two, mut piece_two, _, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
                     if let Some(client) = clients.get(&piece_two.owner) {
-                        println!("health update");
                         client.send(ServerMessage::Health(entity_two.index(), piece_two.health / piece_two.start_health));
                     }
                     if piece_two.health <= 0.0 {
@@ -356,7 +311,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             sensor_is_one = false;
             sensor = sensors.get(*two);
         }
-        if let Ok((sensor_entity, sensor)) = sensor {
+        if let Ok(sensor) = sensor {
             let mut sensor_owner : u64 = 0;
             let mut sensor_slot : u8 = 0;
             if let Ok((_, sensored_piece, _, _)) = pieces.get(sensor.attached_to) {
@@ -574,240 +529,6 @@ fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, 
 }
 
 
-fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePiece, Option<&mut PathFollower>, Option<&Transform>, Option<&Territory>)>, mut ev_newclient : EventWriter<NewClientEvent>, place : EventWriter<PlaceEvent>, mut state : ResMut<GameState>, config : Res<GameConfig>, mut clients : ResMut<ClientMap>, mut receiver : ResMut<Receiver>, broadcast : ResMut<Sender>, mut client_killed : EventWriter<ClientKilledEvent>) {
-    let mut place = Placer(place);
-    // manage events from network-connected clients
-    loop { // loops receiver.try_recv(), until it returns empty
-        match receiver.try_recv() {
-            Ok(message) => {
-                match message {
-                    Comms::ClientConnect(cli) => {
-                        clients.insert(cli.id, cli);
-                    },
-                    Comms::ClientDisconnect(id) => {
-                        println!("client disconnected. cleaning up!");
-                        for (entity, piece, _, _, _) in pieces.iter() {
-                            if piece.owner == id {
-                                commands.entity(entity).despawn();
-                                if let Err(_) = broadcast.send(ServerMessage::DeleteObject(entity.index())) {
-                                    println!("game engine lost connection to webserver. this is probably not critical.");
-                                }
-                            }
-                        }
-                        state.currently_attached_players -= 1;
-                        if clients[&id].alive {
-                            state.currently_playing -= 1;
-                        }
-                        clients.remove(&id);
-                        client_killed.send(ClientKilledEvent { client : id });
-                    },
-                    Comms::MessageFrom(id, msg) => {
-                        let mut kill = false;
-                        if clients.contains_key(&id) {
-                            match msg {
-                                ClientMessage::Connect(banner, _password) => { // TODO: IMPLEMENT PASSWORD
-                                    let slot : u8 = if state.currently_attached_players < config.max_player_slots { 1 } else { 0 }; // todo: implement teams
-                                    for k in clients.keys() {
-                                        if *k != id {
-                                            let message = ServerMessage::PlayerData(*k, clients[k].banner.clone(), clients[k].slot);
-                                            clients[&id].send(message);
-                                        }
-                                    }
-                                    clients.get_mut(&id).unwrap().send(ServerMessage::Metadata(id, config.width, config.height, slot));
-                                    if let Err(_) = broadcast.send(ServerMessage::PlayerData(id, banner.clone(), slot)) {
-                                        println!("couldn't broadcast player data");
-                                    }
-                                    state.currently_attached_players += 1;
-                                    clients.get_mut(&id).unwrap().slot = slot;
-                                    clients.get_mut(&id).unwrap().banner = banner;
-                                    ev_newclient.send(NewClientEvent {id});
-                                },
-                                ClientMessage::PlacePiece(x, y, t) => {
-                                    if let Some(t) = PieceType::from_u16(t) {
-                                        if t == PieceType::Castle {
-                                            if !state.playing || state.io {
-                                                if clients[&id].has_placed_castle {
-                                                    println!("client attempted to place an extra castle. dropping.");
-                                                    kill = true;
-                                                }
-                                                else {
-                                                    let mut is_okay = true;
-                                                    for (_, _, _, transform, territory) in pieces.iter() {
-                                                        if let Some(transform) = transform {
-                                                            if let Some(territory) = territory {
-                                                                let dx = transform.translation.x - x;
-                                                                let dy = transform.translation.y - y;
-                                                                let d = (dx * dx + dy * dy).sqrt();
-                                                                if d < territory.radius + 600.0 { // if the territories would intersect
-                                                                    is_okay = false;
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    if is_okay {
-                                                        state.currently_playing += 1;
-                                                        clients.get_mut(&id).unwrap().has_placed_castle = true;
-                                                        clients.get_mut(&id).unwrap().alive = true;
-                                                        clients.get_mut(&id).unwrap().collect(100);
-                                                        let slot = clients[&id].slot;
-                                                        place.castle(x, y, id, slot);
-                                                        place.basic_fighter_free(x - 200.0, y, PI, id, slot);
-                                                        place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
-                                                        place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
-                                                        place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        else if state.playing && state.strategy {
-                                            let slot = clients[&id].slot;
-                                            if t.user_placeable() {
-                                                if clients.get_mut(&id).unwrap().charge(t.price()) {
-                                                    place.p_simple(x, y, id, slot, t);
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                ClientMessage::StrategyPointAdd(piece_id, index, x, y) => {
-                                    if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
-                                            if entity.index() == piece_id { // TODO: FIX THIS
-                                                // THIS IS REALLY BAD
-                                                // REALLY REALLY REALLY BAD
-                                                // WE'RE DOING LINEAR TIME LOOKUPS WHERE A CONSTANT TIME LOOKUP WOULD SUFFICE AND WELL
-                                                // FIIIIIIIIIIIIIIIIIIX THISSSSSSSSSS
-                                                if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == id {
-                                                        pathfollower.insert_point(index, x, y);
-                                                    }
-                                                    else {
-                                                        println!("client attempted to move thing it doesn't own [how rude]");
-                                                    }
-                                                }
-                                                else {
-                                                    println!("attempt to move immovable object");
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                ClientMessage::StrategyClear(piece_id) => {
-                                    if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
-                                            if entity.index() == piece_id { // see above
-                                                if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == id {
-                                                        pathfollower.clear();
-                                                    }
-                                                }
-                                                else {
-                                                    println!("whoops");
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                ClientMessage::StrategyPointUpdate(piece_id, index, x, y) => {
-                                    if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
-                                            if entity.index() == piece_id { // see above
-                                                if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == id {
-                                                        pathfollower.update_point(index, x, y);
-                                                    }
-                                                }
-                                                else {
-                                                    println!("whoops");
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                ClientMessage::StrategyRemove(piece_id, index) => {
-                                    if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
-                                            if entity.index() == piece_id { // see above
-                                                if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == id {
-                                                        pathfollower.remove_node(index);
-                                                    }
-                                                }
-                                                else {
-                                                    println!("whoops");
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                ClientMessage::StrategySetEndcapRotation(piece_id, r) => {
-                                    if state.playing && state.strategy {
-                                        for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
-                                            if entity.index() == piece_id { // see above
-                                                if let Some(mut pathfollower) = pathfollower {
-                                                    if piece.owner == id {
-                                                        pathfollower.set_endcap_rotation(r);
-                                                    }
-                                                }
-                                                else {
-                                                    println!("whoops");
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                ClientMessage::StrategyTargetAdd(piece_id, t) => {
-                                    if state.playing && state.strategy {
-                                        let mut ent : Option<Entity> = None;
-                                        for (entity, _, _, _, _) in pieces.iter() {
-                                            if entity.index() == t {
-                                                ent = Some(entity);
-                                                break;
-                                            }
-                                        }
-                                        if let Some(target) = ent {
-                                            for (entity, piece, pathfollower, _, _) in pieces.iter_mut() {
-                                                if entity.index() == piece_id {
-                                                    if let Some(mut pathfollower) = pathfollower {
-                                                        if piece.owner == id {
-                                                            let pos = pathfollower.len();
-                                                            pathfollower.insert_target(pos, target);
-                                                        }
-                                                    }
-                                                    else {
-                                                        println!("whoops");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => {
-                                    println!("error: client sent unimplemented frame! dropping client.");
-                                    kill = true;
-                                }
-                            }
-                        }
-                        else {
-                            println!("error: received message from client {}, which does not exist", id);
-                        }
-                        if kill {
-                            clients.remove(&id);
-                        }
-                    }
-                }
-            },
-            Err(mpsc::error::TryRecvError::Empty) => {
-                break;
-            }
-            _ => {
-                println!("ERROR OCCURRED! TAMERE!");
-            }
-        }
-    }
-}
-
 fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform, Option<&Territory>, Option<&Fabber>)>) {
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
@@ -873,156 +594,21 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
 }
 
 
-fn update_field_sensors(mut sensors : Query<(&FieldSensor, &mut Transform), Without<GamePiece>>, pieces : Query<(&GamePiece, &Transform), Without<FieldSensor>>) {
+fn update_field_sensors(mut sensors : Query<(&FieldSensor, &mut Transform)>, pieces : Query<&Transform, Without<FieldSensor>>) {
     for (sensor, mut pos) in sensors.iter_mut() {
-        if let Ok((piece, piece_pos)) = pieces.get(sensor.attached_to) {
+        if let Ok(piece_pos) = pieces.get(sensor.attached_to) {
             pos.translation = piece_pos.translation;
         } 
     }
 }
 
 
-fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut things : EventReader<PlaceEvent>, territories : Query<(&GamePiece, &Transform, Option<&Fabber>, Option<&Territory>)>) {
-    'evloop: for ev in things.read() {
-        let mut transform = Transform::from_xyz(ev.x, ev.y, 0.0);
-        transform.rotate_z(ev.a);
-        let mut piece = commands.spawn((RigidBody::Dynamic, Velocity::zero(), TransformBundle::from(transform), ExternalForce::default(), ExternalImpulse::default(), Damping {
-            linear_damping : 0.0,// todo: clear out unnecessary components (move them to the match statement so we don't have, say, ExternalImpulse on a static body)
-            angular_damping : 0.0
-        }, ActiveEvents::COLLISION_EVENTS));
-        // fabber check
-        let mut isfab = false;
-        if ev.free {
-            isfab = true;
-        }
-        else {
-            for (territory_holder, position, fabber, territory) in territories.iter() {
-                let d_x = position.translation.x - ev.x;
-                let d_y = position.translation.y - ev.y;
-                let dist = d_x * d_x + d_y * d_y;
-                if let Some(fabber) = fabber {
-                    if dist < fabber.radius * fabber.radius && fabber.is_available(ev.tp) {
-                        if territory_holder.owner == ev.owner {
-                            isfab = true;
-                        }
-                        if territory_holder.slot > 1 && ev.slot == territory_holder.slot {
-                            isfab = true;
-                        }
-                    }
-                }
-                if let Some(territory) = territory {
-                    if ev.tp == PieceType::Castle {
-                        if dist.sqrt() < territory.radius + 600.0 {
-                            if territory_holder.owner != ev.owner && (territory_holder.slot == 1 || territory_holder.slot != ev.slot) {
-                                println!("too close!");
-                                piece.despawn();
-                                continue 'evloop;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if !isfab {
-            piece.despawn();
-            continue;
-        }
-        let mut health = 0.0;
-        match ev.tp {
-            PieceType::BasicFighter => {
-                piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::mediocre()));
-                health = 3.0;
-            },
-            PieceType::Castle => {
-                let terr = Territory::castle();
-                let fab = Fabber::castle();
-                let _ = broadcast.send(ServerMessage::Territory(piece.id().index(), terr.radius));
-                let _ = broadcast.send(ServerMessage::Fabber(piece.id().index(), fab.radius));
-                piece.insert((Collider::cuboid(30.0, 30.0), terr, fab));
-                health = 6.0;
-            },
-            PieceType::TieFighter => {
-                piece.insert((Collider::cuboid(20.0, 25.0), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::basic_repeater(2)));
-                health = 3.0;
-            },
-            PieceType::Sniper => {
-                piece.insert((Collider::cuboid(30.0, 15.0), PathFollower::start(ev.x, ev.y), Ship::fast(), Gun::sniper()));
-                health = 3.0;
-            },
-            PieceType::DemolitionCruiser => {
-                piece.insert((Collider::cuboid(20.0, 20.0), PathFollower::start(ev.x, ev.y), Ship::slow(), Gun::bomber()));
-                health = 3.0;
-            },
-            PieceType::Battleship => {
-                piece.insert((Collider::cuboid(75.0, 100.0), PathFollower::start(ev.x, ev.y), Ship::slow(), Gun::mediocre().extended_barrels(4, 40.0).offset(90.0)));
-                health = 12.0;
-            },
-            PieceType::Seed => {
-                piece.insert((Collider::cuboid(3.5, 3.5), Seed::new()));
-                health = 1.0;
-            },
-            PieceType::Chest => {
-                piece.insert((Collider::cuboid(10.0, 10.0), Chest{}));
-                health = 1.0;
-            },
-            PieceType::Farmhouse => {
-                piece.insert((Collider::cuboid(25.0, 25.0), Farmhouse {}));
-                health = 2.0;
-            },
-            PieceType::BallisticMissile => {
-                piece.insert((Collider::cuboid(17.5, 10.0), Missile::ballistic(), PathFollower::start(ev.x, ev.y)));
-                health = 1.0;
-            },
-            PieceType::SeekingMissile => {
-                piece.insert((Collider::cuboid(17.5, 10.0), Missile::cruise().with_intercept_burn(200.0), PathFollower::start(ev.x, ev.y)));
-                health = 1.0;
-            },
-            PieceType::HypersonicMissile => {
-                piece.insert((Collider::cuboid(17.5, 5.0), Missile::hypersonic(), PathFollower::start(ev.x, ev.y), CollisionExplosion {
-                    explosion : ExplosionProperties {
-                        damage : 1.0,
-                        radius : 100.0
-                    }
-                }));
-                health = 1.0;
-            },
-            PieceType::TrackingMissile => {
-                piece.insert((Collider::cuboid(17.5, 8.5), Missile::hypersonic().with_intercept_burn(200.0), PathFollower::start(ev.x, ev.y).with_tracking(), CollisionExplosion {
-                    explosion : ExplosionProperties {
-                        damage : 1.0,
-                        radius : 100.0
-                    }
-                }));
-                health = 1.0;
-            },
-            PieceType::CruiseMissile => {
-                piece.insert((Collider::cuboid(17.5, 5.0), Missile::cruise(), PathFollower::start(ev.x, ev.y), CollisionExplosion {
-                    explosion : ExplosionProperties {
-                        damage : 4.0,
-                        radius : 200.0
-                    }
-                }));
-            },
-            PieceType::Bullet => {}, // not implemented: bullets must be created by the discharge_barrel function
-            PieceType::SmallBomb => {}, // same
-            PieceType::FleetDefenseShip => {} // TODO: fleet defense ships
-        };
-        piece.insert(GamePiece::new(ev.tp, ev.owner, ev.slot, health));
-        let _ = broadcast.send(ServerMessage::ObjectCreate(ev.x, ev.y, ev.a, ev.owner, piece.id().index(), ev.tp as u16));
-        let id = piece.id();
-        if let PieceType::Farmhouse = ev.tp {
-            commands.spawn((FieldSensor::farmhouse(id), Collider::ball(100.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
-        }
-        if let PieceType::SeekingMissile = ev.tp {
-            commands.spawn((FieldSensor::farmhouse(id), Collider::ball(300.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
-        }
-    }
-}
-
-fn setup(mut state : ResMut<GameState>, config : Res<GameConfig>) {
+fn setup(mut commands : Commands, mut state : ResMut<GameState>, config : Res<GameConfig>) {
     // todo: construct board (walls, starting rubble, etc)
     state.tick = 0;
     state.time_in_stage = config.wait_period;
+    let system = commands.register_one_shot_system(setup_board);
+    commands.spawn(BoardSetup(system));
 }
 
 
@@ -1089,16 +675,6 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
     }
 }
 
-
-#[derive(Resource, Deref, DerefMut)]
-struct ClientMap(HashMap<u64, Client>);
-
-#[derive(Resource, Deref, DerefMut)] // todo: better names (or generic type arguments)
-struct Receiver(mpsc::Receiver<Comms>);
-
-#[derive(Resource, Deref, DerefMut)]
-struct Sender(broadcast::Sender<ServerMessage>);
-
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PhysicsSchedule;
 
@@ -1112,6 +688,15 @@ fn run_play_schedule(world : &mut World) {
         world.run_schedule(PhysicsSchedule);
         world.run_schedule(PlaySchedule);
     }
+}
+
+
+fn setup_board(mut commands : Commands, config : Res<GameConfig>) { // set up the gameboard
+    // this runs after every board clear
+    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(config.width / 2.0, -100.0, 0.0)), Collider::cuboid(config.width / 2.0, 100.0)));
+    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(config.width / 2.0, config.height + 100.0, 0.0)), Collider::cuboid(config.width / 2.0, 100.0)));
+    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(-100.0, config.height / 2.0, 0.0)), Collider::cuboid(100.0, config.height / 2.0)));
+    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(config.width + 100.0, config.height / 2.0, 0.0)), Collider::cuboid(100.0, config.height / 2.0)));
 }
 
 
@@ -1314,7 +899,7 @@ async fn main() {
             update_field_sensors,
             client_health_check
         )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup, setup_board))
         .set_runner(|mut app| {
             loop {
                 let start = std::time::Instant::now();

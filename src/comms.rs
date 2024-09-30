@@ -36,7 +36,8 @@ pub enum ClientMessage { // client -> server
     // if any Strategy commands are sent referencing nonexistent nodes on a strategy, or StrategyPointUpdate is sent referencing a non-point strategy node (such
     // as a teleportal entrance), the server will simply ignore them. This may be a problem in the future.
     StrategySetEndcapRotation(u32, f32), // (id, r) set the strategy endcap for an object to a rotation
-    StrategyTargetAdd(u32, u32) // (id, target) add a piece to id's strategy
+    StrategyTargetAdd(u32, u32), // (id, target) add a piece to id's strategy
+    GunState(u32, u8) // (id, state) change the state of a gun. 0 = disable, 1 = enable.
 }
 
 // upon connecting, the server immediately sends the client Test("EXOSPHERE", 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION)
@@ -47,7 +48,7 @@ pub enum ClientMessage { // client -> server
 // If a client attempts to do anything before protocol verification, it will be kicked off the server.
 
 #[derive(Debug, ProtocolRoot, Clone)]
-pub(crate) enum ServerMessage { // server -> client
+pub enum ServerMessage { // server -> client
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. see above blurb.
     GameState(u8, u16, u16), // game state, stage tick, stage total time
     // this is just 5 bytes - quite acceptable to send to every client every frame, much lower overhead than even ObjectMove.
@@ -80,7 +81,7 @@ pub(crate) enum ServerMessage { // server -> client
 }
 
 
-pub(crate) enum Comms { // webserver -> game engine
+pub enum Comms { // webserver -> game engine
     ClientConnect(Client), // (client) a client connected
     ClientDisconnect(u64), // (id) a client disconnected
     MessageFrom(u64, ClientMessage) // (id, message) a client sent a message that was successfully decoded and filtered

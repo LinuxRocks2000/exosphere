@@ -15,7 +15,7 @@
 use bevy::prelude::Event;
 use bevy::prelude::Entity;
 use crate::PieceType;
-use crate::ExplosionProperties;
+use crate::components::ExplosionProperties;
 
 #[derive(Event)]
 pub(crate) struct NewClientEvent {

@@ -283,6 +283,9 @@ function mainloop() {
             ctx.fillStyle = "red";
             ctx.fillRect(-25, -yminus - 10, 50 * item.health, 5);
         }
+        if (!item.gunEnabled) {
+            ctx.drawImage(getRes("nogun"), -8, yminus + 10);
+        }
         ctx.translate(-x, -y);
         var m_dx = mouseX - x;
         var m_dy = mouseY - y;
@@ -609,6 +612,7 @@ function play() {
             a_n: a,
             owner : owner,
             type: type,
+            gunEnabled: true,
             id: id,
             health: 1.0,
             strategy_endcap: undefined,
@@ -726,6 +730,12 @@ function play() {
             if (selected && is_playing && is_strategy) {
                 selected.strategy = [];
                 protocol.StrategyClear(selected.id);
+            }
+        }
+        if (evt.key == "g") {
+            if (selected && is_playing && is_strategy) {
+                selected.gunEnabled = !selected.gunEnabled;
+                protocol.GunState(selected.id, selected.gunEnabled ? 1 : 0);
             }
         }
         keysDown[evt.key] = false;

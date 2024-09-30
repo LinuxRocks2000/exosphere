@@ -380,6 +380,13 @@ const OUTGOING_PROTOCOL = [
             'u32',
             'u32'
         ]
+    },
+    {
+        name: "GunState",
+        layout: [
+            'u32',
+            'u8'
+        ]
     }
 ];
 

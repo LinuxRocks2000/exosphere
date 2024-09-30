@@ -15,9 +15,9 @@
 use bevy::prelude::Component;
 use bevy::prelude::Entity;
 use crate::Bullets;
-use crate::ExplosionProperties;
 use bevy::prelude::Vec2;
 use crate::PieceType;
+use bevy::ecs::system::SystemId;
 
 
 #[derive(Component)]
@@ -415,3 +415,27 @@ impl Missile {
 pub(crate) struct CollisionExplosion { // entities with this component explode whenever they hit anything
     pub(crate) explosion : ExplosionProperties
 }
+
+
+#[derive(Component)]
+pub struct BoardSetup(pub SystemId);
+
+
+#[derive(Copy, Clone, Component)]
+pub struct ExplosionProperties {
+    pub radius : f32,
+    pub damage : f32
+}
+
+impl ExplosionProperties {
+    pub fn small() -> Self {
+        Self {
+            radius : 100.0,
+            damage : 2.0
+        }
+    }
+}
+
+
+#[derive(Component)]
+pub struct StaticWall;
