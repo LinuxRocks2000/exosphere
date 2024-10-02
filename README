@@ -4,3 +4,9 @@ Exosphere is the third member of Tyler Clarke's Strategy Game franchise. It is a
 Unlike MMOSG v2, which is written with a custom websocket server, game engine, and physics engine, Exosphere uses the open source Bevy, Warp, and Rapier libraries.
 
 Exosphere is free software under GNU GPLv3.
+
+HOW TO RUN:
+To run the server, enter the `server/` directory and just `cargo run --release`. It'll host websocket on localhost:3000.
+
+To run the client, enter the `client/` directory and `wasm-pack build --target web`. You'll need wasm-pack; you can get that with `cargo install wasm-pack`.
+That will compile the WASM objects and glue. Once that's done, start any http server in `client/` and visit it locally.

@@ -259,6 +259,12 @@
     }
         </script>
         <script src="gl.js"></script>
-        <script src="main.js"></script>
+        <!--<script src="main.js"></script>-->
+        <script type="module">
+            import init, { entrypoint } from "./pkg/client.js";
+            init().then(() => {
+                entrypoint();
+            });
+        </script>
     </body>
 </html>
