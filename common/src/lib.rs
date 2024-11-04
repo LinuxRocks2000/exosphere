@@ -1,14 +1,3 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod protocol;
+pub mod comms;
+pub const VERSION : u8 = 0; // bump this up every time a major change is made (overflow at 256; this is not meant to be an authoritative correct version)

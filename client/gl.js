@@ -91,24 +91,20 @@ function setup_gridoverlay_renderer() { // this is a higher-order function that 
     let territory_buffer = new Float32Array(64 * 3);
     let territory_count_handle = get_uniform_location("territory_count");
 
-    return function (boffX, boffY, bWid, bHeigh, pieces, fabbers, territories) {
+    return function (boffX, boffY, bWid, bHeigh, fabbers, territories) {
         let territory_count = 0;
-        Object.keys(territories).forEach(key => {
-            if (pieces[key]) {
-                territory_buffer[territory_count * 3] = pieces[key].x_n;
-                territory_buffer[territory_count * 3 + 1] = pieces[key].y_n;
-                territory_buffer[territory_count * 3 + 2] = territories[key] * (isFriendly(pieces[key].owner) ? 1 : -1);
-                territory_count += 1;
-            }
+        territories.forEach(terr => {
+            territory_buffer[territory_count * 3] = terr.x;
+            territory_buffer[territory_count * 3 + 1] = terr.y;
+            territory_buffer[territory_count * 3 + 2] = terr.rad * (terr.isFriendly ? 1 : -1);
+            territory_count += 1;
         });
         let fabber_count = 0;
-        Object.keys(fabbers).forEach(key => {
-            if (pieces[key]) {
-                fabbers_buffer[fabber_count * 3] = pieces[key].x_n;
-                fabbers_buffer[fabber_count * 3 + 1] = pieces[key].y_n;
-                fabbers_buffer[fabber_count * 3 + 2] = fabbers[key] * (isFriendly(pieces[key].owner) ? 1 : -1);
-                fabber_count += 1;
-            }
+        fabbers.forEach(fab => {
+            fabbers_buffer[fabber_count * 3] = fab.x;
+            fabbers_buffer[fabber_count * 3 + 1] = fab.y;
+            fabbers_buffer[fabber_count * 3 + 2] = fab.rad * (fab.isFriendly ? 1 : -1);
+            fabber_count += 1;
         });
         webgl.uniform1i(territory_count_handle, territory_count);
         webgl.uniform3fv(territories_handle, territory_buffer);

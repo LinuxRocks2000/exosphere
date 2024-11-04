@@ -16,5 +16,3 @@ pub const UPDATE_RATE : u64 = 30; // 30hz by default
 pub const FRAME_TIME : std::time::Duration = std::time::Duration::from_millis(1000 / UPDATE_RATE); // milliseconds per frame
 
 pub const MAX_FRAME_SIZE : usize = 1024; // maximum size of an incoming websocket frame
-
-pub const VERSION : u8 = 0; // bump this up every time a major change is made

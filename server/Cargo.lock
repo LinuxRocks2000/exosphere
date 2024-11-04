@@ -1428,6 +1428,9 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
+dependencies = [
+ "derive_macro",
+]
 
 [[package]]
 name = "concurrent-queue"
@@ -1848,7 +1851,6 @@ dependencies = [
  "bevy_rapier2d",
  "bevy_time",
  "common",
- "derive_macro",
  "futures-util",
  "log",
  "num-derive",

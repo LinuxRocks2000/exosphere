@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use tokio::sync::{mpsc, broadcast};
 use crate::comms::*;
 use crate::Client;
+use crate::Comms;
 
 
 // todo: break up GameConfig and GameState into smaller structs for better parallelism

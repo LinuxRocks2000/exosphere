@@ -28,7 +28,7 @@
             <h1>Exosphere</h1>
             <b>Server: </b><input type="text" id="server" oninput="saveinputstate(this);"><br>
             <b>Nickname: </b><input type="text" id="nickname" oninput="saveinputstate(this);"><br>
-            <button id="play" onclick="play()">Play</button>
+            <button id="play">Play</button>
         </div>
         <div id="gameui" style="display: none">
             <div id="buyshipmenu">
@@ -157,8 +157,6 @@
             <img src="res/castle_friendly.svg" id="castle_friendly">
             <img src="res/castle_enemy.svg" id="castle_enemy">
         </div>
-        <script src="parse_frame.js"></script>
-        <script src="protocol_wrapper.js"></script>
         <script type="shader/fragment" id="fragment-shader">
     precision highp float;
     uniform vec2 boardOffset;
@@ -258,13 +256,25 @@
         gl_Position = vec4(position, 0.0, 1.0);
     }
         </script>
-        <script src="gl.js"></script>
+        <script src="gl.js?"></script>
         <!--<script src="main.js"></script>-->
         <script type="module">
             import init, { entrypoint } from "./pkg/client.js";
             init().then(() => {
                 entrypoint();
             });
+        </script>
+        <script>
+
+function saveinputstate(el) {
+    localStorage["inputstate_" + el.id] = el.value;
+}
+
+for (el of document.getElementsByTagName("input")) {
+    if (localStorage["inputstate_" + el.id]) {
+        el.value = localStorage["inputstate_" + el.id];
+    }
+}
         </script>
     </body>
 </html>

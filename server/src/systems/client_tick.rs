@@ -20,6 +20,7 @@ use crate::events::*;
 use crate::resources::*;
 use crate::Placer;
 use crate::comms::*;
+use crate::Comms;
 use crate::types::*;
 use std::f32::consts::PI;
 use tokio::sync::{mpsc, broadcast};
@@ -46,7 +47,9 @@ pub fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePie
                                 }
                             }
                         }
-                        state.currently_attached_players -= 1;
+                        if clients[&id].connected {
+                            state.currently_attached_players -= 1;
+                        }
                         if clients[&id].alive {
                             state.currently_playing -= 1;
                         }
@@ -72,6 +75,7 @@ pub fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePie
                                     state.currently_attached_players += 1;
                                     clients.get_mut(&id).unwrap().slot = slot;
                                     clients.get_mut(&id).unwrap().banner = banner;
+                                    clients.get_mut(&id).unwrap().connected = true;
                                     ev_newclient.send(NewClientEvent {id});
                                 },
                                 ClientMessage::PlacePiece(x, y, t) => {

@@ -10,8 +10,8 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
 */
 
-use crate::Protocol;
-use crate::protocol::DecodeError;
+use super::Protocol;
+use super::DecodeError;
 
 impl Protocol for String {
     fn size(&self) -> usize {

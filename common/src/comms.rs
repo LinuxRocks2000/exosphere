@@ -14,10 +14,9 @@
 // includes Server -> Client, Client -> Server, Webserver -> Game Engine, Game Engine -> Webserver
 // impls where applicable sorted to the bottom of the file
 
-use crate::Client;
-use crate::ProtocolRoot;
-use crate::Protocol;
-use crate::DecodeError;
+use crate::protocol::ProtocolRoot;
+use crate::protocol::Protocol;
+use crate::protocol::DecodeError;
 
 
 #[derive(Debug, ProtocolRoot, PartialEq)]
@@ -78,11 +77,4 @@ pub enum ServerMessage { // server -> client
     // in the future we may want to be able to see the money of our allies, so the id tag could be useful
     Explosion(f32, f32, f32, f32), // x, y, radius, damage: an explosion happened! the client should render it for one frame and then kill it
     Health(u32, f32), // (id, health): tell a player about the current health of one of its pieces
-}
-
-
-pub enum Comms { // webserver -> game engine
-    ClientConnect(Client), // (client) a client connected
-    ClientDisconnect(u64), // (id) a client disconnected
-    MessageFrom(u64, ClientMessage) // (id, message) a client sent a message that was successfully decoded and filtered
 }

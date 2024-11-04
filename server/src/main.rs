@@ -35,11 +35,18 @@ use std::f32::consts::PI;
 use rand::Rng;
 use std::collections::HashMap;
 
+use common::protocol::*;
+use common::VERSION;
+pub use common::comms;
+use comms::{ ClientMessage, ServerMessage };
 
-pub mod protocol;
-use protocol::Protocol;
-use protocol::ProtocolRoot;
-use crate::protocol::DecodeError;
+
+pub enum Comms { // webserver -> game engine
+    ClientConnect(Client), // (client) a client connected
+    ClientDisconnect(u64), // (id) a client disconnected
+    MessageFrom(u64, ClientMessage) // (id, message) a client sent a message that was successfully decoded and filtered
+}
+
 
 pub mod solve_spaceship;
 use solve_spaceship::*;
@@ -52,9 +59,6 @@ use events::*;
 
 pub mod consts;
 use consts::*;
-
-pub mod comms;
-use comms::*;
 
 pub mod components;
 use components::*;
@@ -76,7 +80,8 @@ pub struct Client {
     channel : std::sync::Mutex<tokio::sync::mpsc::Sender<ServerMessage>>,
     has_placed_castle : bool,
     alive : bool,
-    money : u32 // if I make it a u16 richard will crash the server by somehow farming up >66k money
+    money : u32, // if I make it a u16 richard will crash the server by somehow farming up >66k money
+    connected : bool
 }
 
 
@@ -734,7 +739,8 @@ async fn main() {
                     slot : 0,
                     channel : std::sync::Mutex::new(from_bevy_tx),
                     alive : false,
-                    money : 0
+                    money : 0,
+                    connected : false
                 });
                 if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode())).await {
                     println!("client disconnected before handshake");
