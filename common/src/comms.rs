@@ -10,8 +10,8 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
 */
 
-// communications enums
-// includes Server -> Client, Client -> Server, Webserver -> Game Engine, Game Engine -> Webserver
+// common communications enums
+// includes Server -> Client and Client -> Server
 // impls where applicable sorted to the bottom of the file
 
 use crate::protocol::ProtocolRoot;

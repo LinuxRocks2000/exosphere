@@ -20,6 +20,11 @@
 // [about an hour later] at this point I'd just like to pretend this file doesn't exist and get on with my game development.
 // buuuuuut I have error handling to do *sigh*
 
+// [several months in the future] it actually ported fine to wasm. protocol seems solid.
+// perhaps I truly can forget this crate exists...
+// the deranged comments above and menacing scrollbar to the right hint that perhaps 'tis not the case.
+
+
 use proc_macro::TokenStream;
 use quote::quote;
 

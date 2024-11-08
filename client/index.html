@@ -31,6 +31,9 @@
             <button id="play">Play</button>
         </div>
         <div id="gameui" style="display: none">
+            <div id="readouts">
+                <div id="timebar"><span id="phase"></span> <span id="curtime"></span> / <span id="stagetime"></span></span></div>
+            </div>
             <div id="buyshipmenu">
                 <!--
                     every direct div child of #buyshipmenu represents a row of placeables, usually directly corresponding to a
@@ -258,7 +261,7 @@
         </script>
         <script src="gl.js?"></script>
         <!--<script src="main.js"></script>-->
-        <script type="module">
+        <script type="module">       
             import init, { entrypoint } from "./pkg/client.js";
             init().then(() => {
                 entrypoint();
