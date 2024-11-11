@@ -14,7 +14,7 @@
 
 use bevy::prelude::Event;
 use bevy::prelude::Entity;
-use crate::PieceType;
+use common::types::PieceType;
 use crate::components::ExplosionProperties;
 
 #[derive(Event)]

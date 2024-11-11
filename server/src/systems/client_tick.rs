@@ -21,7 +21,7 @@ use crate::resources::*;
 use crate::Placer;
 use crate::comms::*;
 use crate::Comms;
-use crate::types::*;
+use common::types::*;
 use std::f32::consts::PI;
 use tokio::sync::{mpsc, broadcast};
 use num_traits::FromPrimitive;

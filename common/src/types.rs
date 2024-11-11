@@ -40,11 +40,14 @@
 
 use num_derive::FromPrimitive;    
 use num_traits::FromPrimitive;
-use crate::components::FabLevels;
+use crate::fab::FabLevels;
+#[cfg(feature = "server")]
+use bevy_rapier2d::prelude::Collider;
 
 
+#[repr(u16)]
 #[derive(Copy, Clone, Debug, PartialEq, FromPrimitive)]
-pub(crate) enum PieceType {
+pub enum PieceType {
     BasicFighter = 0,
     Castle = 1,
     Bullet = 2,
@@ -65,8 +68,39 @@ pub(crate) enum PieceType {
 }
 
 
+pub enum Asset { // drawing assets, specifically for client side
+    Simple(&'static str), // one image
+    Partisan(&'static str, &'static str), // (friendly, enemy) for types that have different assets depending on their friendliness
+    Unimpl // we don't have any resources for this asset
+}
+
+
+pub enum Shape {
+    Box(f32, f32), // width, height
+    Unimpl // no shape data for this asset
+}
+
+
+impl Shape {
+    pub fn to_bbox(&self) -> (f32, f32) {
+        match self {
+            Self::Box(w, h) => (*w, *h),
+            Self::Unimpl => (50.0, 50.0)
+        }
+    }
+
+    #[cfg(feature = "server")]
+    pub fn to_collider(&self) -> Collider {
+        match self {
+            Self::Box(w, h) => Collider::cuboid(*w / 2.0, *h / 2.0),
+            Self::Unimpl => Collider::cuboid(25.0, 25.0) // a bigass "loading failed" that kills things
+        }
+    }
+}
+
+
 impl PieceType {
-    pub(crate) fn price(&self) -> u32 {
+    pub fn price(&self) -> u32 {
         match self {
             Self::BasicFighter => 10,
             Self::TieFighter => 20,
@@ -85,7 +119,7 @@ impl PieceType {
         }
     }
 
-    pub(crate) fn user_placeable(&self) -> bool {
+    pub fn user_placeable(&self) -> bool {
         match self {
             Self::BasicFighter | Self::TieFighter | Self::Sniper | Self::CruiseMissile |
             Self::DemolitionCruiser | Self::Battleship | Self::Seed | Self::TrackingMissile |
@@ -95,7 +129,7 @@ impl PieceType {
         }
     }
 
-    pub(crate) fn fabber(&self) -> FabLevels {
+    pub fn fabber(&self) -> FabLevels {
         match self {
             Self::BasicFighter => FabLevels::ships(1),
             Self::TieFighter => FabLevels::ships(1),
@@ -110,6 +144,25 @@ impl PieceType {
             Self::TrackingMissile => FabLevels::missiles(3),
             Self::CruiseMissile => FabLevels::missiles(4),
             _ => FabLevels::default()
+        }
+    }
+
+    pub fn asset(&self) -> Asset { // specifically for the client side: get the image(s?) for the thing we're drawing
+        match self {
+            Self::BasicFighter => Asset::Partisan("basic_fighter_friendly.svg", "basic_fighter_enemy.svg"),
+            Self::Castle => Asset::Partisan("castle_friendly.svg", "castle_enemy.svg"),
+            Self::Bullet => Asset::Simple("bullet.svg"),
+            Self::TieFighter => Asset::Partisan("tie_fighter_friendly.svg", "tie_fighter_enemy.svg"),
+            _ => Asset::Unimpl
+        }
+    }
+
+    pub fn shape(&self) -> Shape {
+        match self {
+            Self::BasicFighter => Shape::Box(41.0, 41.0),
+            Self::Bullet => Shape::Box(5.0, 5.0),
+            Self::Castle => Shape::Box(60.0, 60.0),
+            _ => Shape::Unimpl
         }
     }
 }

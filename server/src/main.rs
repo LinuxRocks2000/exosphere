@@ -36,6 +36,7 @@ use rand::Rng;
 use std::collections::HashMap;
 
 use common::protocol::*;
+use common::types::*;
 use common::VERSION;
 pub use common::comms;
 use comms::{ ClientMessage, ServerMessage };
@@ -62,9 +63,6 @@ use consts::*;
 
 pub mod components;
 use components::*;
-
-pub mod types;
-use types::*;
 
 mod systems;
 use systems::*;

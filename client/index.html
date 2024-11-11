@@ -33,6 +33,7 @@
         <div id="gameui" style="display: none">
             <div id="readouts">
                 <div id="timebar"><span id="phase"></span> <span id="curtime"></span> / <span id="stagetime"></span></span></div>
+                <div id="moneybar">$<span id="money">0</span></div>
             </div>
             <div id="buyshipmenu">
                 <!--
@@ -132,33 +133,8 @@
         <div id="waitscreen" style="display: none;">
             Loading. Please wait. If this takes more than a few seconds, your connection is probably zonked.
         </div>
-        <div style="display: none" id="res">
-            <img src="res/nogun.svg" id="nogun">
-            <img src="res/cruise_missile_friendly.svg" id="cruise_missile_friendly">
-            <img src="res/cruise_missile_enemy.svg" id="cruise_missile_enemy">
-            <img src="res/tracking_missile_friendly.svg" id="tracking_missile_friendly">
-            <img src="res/tracking_missile_enemy.svg" id="tracking_missile_enemy">
-            <img src="res/hypersonic_missile_friendly.svg" id="hypersonic_missile_friendly">
-            <img src="res/hypersonic_missile_enemy.svg" id="hypersonic_missile_enemy">
-            <img src="res/seeking_missile_friendly.svg" id="seeking_missile_friendly">
-            <img src="res/seeking_missile_enemy.svg" id="seeking_missile_enemy">
-            <img src="res/ballistic_missile_friendly.svg" id="ballistic_missile_friendly">
-            <img src="res/ballistic_missile_enemy.svg" id="ballistic_missile_enemy">
-            <img src="res/farmhouse.svg" id="farmhouse">
-            <img src="res/chest.svg" id="chest">
-            <img src="res/seed.svg" id="seed">
-            <img src="res/battleship_friendly.svg" id="battleship_friendly">
-            <img src="res/battleship_enemy.svg" id="battleship_enemy">
-            <img src="res/demolition_cruiser_friendly.svg" id="demolition_cruiser_friendly">
-            <img src="res/demolition_cruiser_enemy.svg" id="demolition_cruiser_enemy">
-            <img src="res/sniper_friendly.svg" id="sniper_friendly">
-            <img src="res/sniper_enemy.svg" id="sniper_enemy">
-            <img src="res/tie_fighter_friendly.svg" id="tie_fighter_friendly">
-            <img src="res/tie_fighter_enemy.svg" id="tie_fighter_enemy">
-            <img src="res/basic_fighter_friendly.svg" id="basic_fighter_friendly">
-            <img src="res/basic_fighter_enemy.svg" id="basic_fighter_enemy">
-            <img src="res/castle_friendly.svg" id="castle_friendly">
-            <img src="res/castle_enemy.svg" id="castle_enemy">
+        <div id="res">
+            
         </div>
         <script type="shader/fragment" id="fragment-shader">
     precision highp float;
@@ -172,8 +148,9 @@
     void main(){
         float x_in = gl_FragCoord.x - boardOffset.x;
         float y_in = gl_FragCoord.y - boardOffset.y;
-        gl_FragColor = vec4(0.0, 0.0, 0.1, 1.0);
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
         if (gl_FragCoord.x > boardOffset.x && gl_FragCoord.y < boardOffset.y && gl_FragCoord.x < boardOffset.x + boardSize.x && gl_FragCoord.y > boardOffset.y - boardSize.y) {
+            gl_FragColor = vec4(0.0, 0.0, 0.1, 1.0);
             int nearest_territory = -1;
             float nearest_dist = -1.0;
             int nearest_affiliation = 0; // 0 = default, 1 = friendly, 2 = unfriendly
@@ -260,11 +237,12 @@
     }
         </script>
         <script src="gl.js?"></script>
+        <script src="setup.js"></script>
         <!--<script src="main.js"></script>-->
         <script type="module">       
-            import init, { entrypoint } from "./pkg/client.js";
+            import init, { State } from "./pkg/client.js";
             init().then(() => {
-                entrypoint();
+                setup(new State());
             });
         </script>
         <script>

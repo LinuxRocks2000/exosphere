@@ -16,8 +16,9 @@ use bevy::prelude::Component;
 use bevy::prelude::Entity;
 use crate::Bullets;
 use bevy::prelude::Vec2;
-use crate::PieceType;
 use bevy::ecs::system::SystemId;
+use common::fab::FabLevels;
+use common::types::PieceType;
 
 
 #[derive(Component)]
@@ -73,88 +74,6 @@ impl Territory {
 pub(crate) struct Fabber { // a fabber bay with a radius
     pub(crate) radius : f32,
     pub(crate) levels : FabLevels
-}
-
-
-#[derive(PartialEq)]
-pub(crate) struct FabLevels {
-    pub(crate) missiles : u8,
-    pub(crate) ships : u8,
-    pub(crate) econ : u8,
-    pub(crate) defense : u8,
-    pub(crate) buildings : u8
-}
-
-
-impl FabLevels {
-    pub(crate) fn default() -> Self {
-        Self {
-            missiles : 0,
-            ships : 0,
-            econ : 0,
-            defense : 0,
-            buildings : 0
-        }
-    }
-
-    pub(crate) fn with_missiles(mut self, lev : u8) -> Self {
-        self.missiles = lev;
-        self
-    }
-
-    pub(crate) fn with_ships(mut self, lev : u8) -> Self {
-        self.ships = lev;
-        self
-    }
-
-    pub(crate) fn with_econ(mut self, lev : u8) -> Self {
-        self.econ = lev;
-        self
-    }
-
-    pub(crate) fn with_defense(mut self, lev : u8) -> Self {
-        self.defense = lev;
-        self
-    }
-
-    pub(crate) fn with_buildings(mut self, lev : u8) -> Self {
-        self.buildings = lev;
-        self
-    }
-
-    pub(crate) fn missiles(lev : u8) -> Self {
-        Self::default().with_missiles(lev)
-    }
-
-    pub(crate) fn ships(lev : u8) -> Self {
-        Self::default().with_ships(lev)
-    }
-
-    pub(crate) fn econ(lev : u8) -> Self {
-        Self::default().with_econ(lev)
-    }
-
-    pub(crate) fn defense(lev : u8) -> Self {
-        Self::default().with_defense(lev)
-    }
-
-    pub(crate) fn buildings(lev : u8) -> Self {
-        Self::default().with_buildings(lev)
-    }
-}
-
-
-impl std::cmp::PartialOrd for FabLevels {
-    fn partial_cmp(&self, other : &FabLevels) -> Option<std::cmp::Ordering> {
-        // a FabLevels is greater than another FabLevels if every level is greater, and equal if they're all the same; otherwise, it is less.
-        if *self == *other {
-            return Some(std::cmp::Ordering::Equal);
-        }
-        if self.missiles > other.missiles && self.ships > other.ships && self.econ > other.econ && self.defense > other.defense && self.buildings > other.buildings {
-            return Some(std::cmp::Ordering::Greater);
-        }
-        Some(std::cmp::Ordering::Less)
-    }
 }
 
 

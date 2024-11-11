@@ -1429,7 +1429,10 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "bevy_rapier2d",
  "derive_macro",
+ "num-derive",
+ "num-traits",
 ]
 
 [[package]]

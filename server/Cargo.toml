@@ -10,7 +10,7 @@ tokio = { version = "*", features = ["full"] }
 tokio-macros = { version = "0.2.0-alpha.6" }
 futures-util = "*"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
-common = { path = "../common/" }
+common = { path = "../common/", features = ["server"] }
 bevy_rapier2d = { version = "*" }
 bevy_time = "*"
 rand = "*"

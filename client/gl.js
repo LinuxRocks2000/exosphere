@@ -85,27 +85,11 @@ function setup_gridoverlay_renderer() { // this is a higher-order function that 
     let boffset = get_uniform_location("boardOffset");
     let bsize = get_uniform_location("boardSize");
     let fabbers_handle = get_uniform_location("fabbers");
-    let fabbers_buffer = new Float32Array(64 * 3);
     let fabber_count_handle = get_uniform_location("fabber_count");
     let territories_handle = get_uniform_location("territories");
-    let territory_buffer = new Float32Array(64 * 3);
     let territory_count_handle = get_uniform_location("territory_count");
 
-    return function (boffX, boffY, bWid, bHeigh, fabbers, territories) {
-        let territory_count = 0;
-        territories.forEach(terr => {
-            territory_buffer[territory_count * 3] = terr.x;
-            territory_buffer[territory_count * 3 + 1] = terr.y;
-            territory_buffer[territory_count * 3 + 2] = terr.rad * (terr.isFriendly ? 1 : -1);
-            territory_count += 1;
-        });
-        let fabber_count = 0;
-        fabbers.forEach(fab => {
-            fabbers_buffer[fabber_count * 3] = fab.x;
-            fabbers_buffer[fabber_count * 3 + 1] = fab.y;
-            fabbers_buffer[fabber_count * 3 + 2] = fab.rad * (fab.isFriendly ? 1 : -1);
-            fabber_count += 1;
-        });
+    return function (boffX, boffY, bWid, bHeigh, fabbers_buffer, fabber_count, territory_buffer, territory_count) {
         webgl.uniform1i(territory_count_handle, territory_count);
         webgl.uniform3fv(territories_handle, territory_buffer);
         webgl.uniform1i(fabber_count_handle, fabber_count);

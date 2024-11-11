@@ -16,87 +16,29 @@ export function alert(msg) {
     window.alert(msg);
 }
 
-function toMouseX(x) {
-    return x - window.innerWidth/2 + window.exosphere.board.offX;
+export function render_background(fabbers_buf, fabber_count, territories_buf, territory_count) {
+    window.exosphere.overlay(window.innerWidth/2 - window.exosphere.board.offX, window.innerHeight/2 + window.exosphere.board.offY,
+    window.exosphere.board.width, window.exosphere.board.height, fabbers_buf, fabber_count, territories_buf, territory_count);
 }
 
-function toMouseY(y) {
-    return y - window.innerHeight/2 + window.exosphere.board.offY;
-}
 
-export function register_listeners(on_tick_wasm, on_key_wasm, on_mouse_wasm, on_ws_wasm) {
-    // set the event listener that kicks off the core of the program
-    let overlay = setup_gridoverlay_renderer();
-    const mainloop = () => {
-        overlay(window.innerWidth/2 - window.exosphere.board.offX, window.innerHeight/2 + window.exosphere.board.offY, window.exosphere.board.width, window.exosphere.board.height, window.exosphere.fabbers, window.exosphere.territories);
-        exosphere.ctx.fillStyle = "rgba(0, 0, 0, 0)";
-        exosphere.ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-        exosphere.ctx.translate(window.innerWidth/2 - window.exosphere.board.offX, window.innerHeight / 2 - window.exosphere.board.offY);
-        exosphere.ctx.strokeStyle = "#FFFFFF";
-        exosphere.ctx.lineWidth = 2;
-        exosphere.ctx.strokeRect(0, 0, exosphere.board.width, exosphere.board.height);
-        exosphere.ctx.translate(-window.innerWidth/2 + window.exosphere.board.offX, -window.innerHeight / 2 + window.exosphere.board.offY);
-        on_tick_wasm();
-        requestAnimationFrame(mainloop);
-    };
-    window.exosphere = {
-        board : {
-            width: 0,
-            height: 0,
-            offX: 0,
-            offY: 0
-        },
-        canvas : document.getElementById("game"),
-        ctx : document.getElementById("game").getContext("2d"),
-        territories: [],
-        fabbers: []
-    };
-    document.getElementById("play").onclick = () => {
-        let websocket = new WebSocket(document.getElementById("server").value);
-        websocket.onopen = () => {
-            mainloop();
-            document.getElementById("gameui").style.display = "";
-            document.getElementById("loginmenu").style.display = "none";
-        };
-        websocket.onerror = () => {
-            alert("connection error");
-            window.location.reload();
-        };
-        websocket.onclose = () => {
-            alert("disconnected");
-            window.location.reload();
-        };
-        websocket.onmessage = async (msg) => {
-            let bytes = new Uint8Array(await msg.data.arrayBuffer());
-            on_ws_wasm(bytes);
-        };
-        window.exosphere.websocket = websocket;
-    };
-    window.addEventListener("keydown", evt => {
-        on_key_wasm(evt.key, 1);
-    });
-    window.addEventListener("keyup", evt => {
-        on_key_wasm(evt.key, 0);
-    });
-    window.addEventListener("pointermove", evt => {
-        on_mouse_wasm(toMouseX(evt.clientX), toMouseY(evt.clientY), 0);
-    });
-    window.addEventListener("pointerup", evt => {
-        on_mouse_wasm(toMouseX(evt.clientX), toMouseY(evt.clientY), 1);
-    });
-    window.addEventListener("pointerdown", evt => {
-        on_mouse_wasm(toMouseX(evt.clientX), toMouseY(evt.clientY), 2);
-    });
-    function onresize() {
-        window.exosphere.canvas.width = window.innerWidth;
-        window.exosphere.canvas.height = window.innerHeight;
-        document.getElementById("grid-overlay").width = window.innerWidth;
-        document.getElementById("grid-overlay").height = window.innerHeight;
+export function ctx_draw_sprite(asset, x, y, a, w, h) {
+    let image = document.getElementById(asset);
+    if (!image) {
+        image = new Image();
+        image.src = "res/" + asset;
+        image.id = asset;
+        document.getElementById("res").appendChild(image);
     }
-    
-    onresize();
-    window.addEventListener("resize", onresize);
+    window.exosphere.ctx.translate(x, y);
+    window.exosphere.ctx.rotate(a);
+    window.exosphere.ctx.translate(-w/2, -h/2);
+    window.exosphere.ctx.drawImage(image, 0, 0);
+    window.exosphere.ctx.translate(w/2, h/2);
+    window.exosphere.ctx.rotate(-a);
+    window.exosphere.ctx.translate(-x, -y);
 }
+
 
 export function send_ws(data) {
     window.exosphere.websocket.send(data);
@@ -125,9 +67,24 @@ export function set_time(tick, stage, phase) {
         tb.style.backgroundColor = "red";
     }
     else if (stage - tick < 150) {
-        tb.style.backgroundColor = "yellow";
+        tb.style.backgroundColor = "rgb(97, 71, 0)";
     }
     else {
         tb.style.backgroundColor = "green";
     }
+}
+
+export function ctx_stroke(wid, color) {
+    window.exosphere.ctx.lineWidth = wid;
+    window.exosphere.ctx.strokeStyle = color;
+}
+
+export function ctx_outline_circle(x, y, rad) {
+    window.exosphere.ctx.beginPath();
+    window.exosphere.ctx.arc(x, y, rad, 0, 2 * Math.PI);
+    window.exosphere.ctx.stroke();
+}
+
+export function set_money(m) {
+    document.getElementById("money").innerText = m;
 }

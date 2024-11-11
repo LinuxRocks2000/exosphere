@@ -15,7 +15,7 @@ use bevy_rapier2d::prelude::*;
 use crate::resources::*;
 use crate::events::*;
 use crate::components::*;
-use crate::types::*;
+use common::types::*;
 use crate::pathfollower::*;
 use crate::comms::*;
 
@@ -68,7 +68,7 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
         let mut health = 0.0;
         match ev.tp {
             PieceType::BasicFighter => {
-                piece.insert((Collider::cuboid(20.5, 20.5), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::mediocre()));
+                piece.insert((ev.tp.shape().to_collider(), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::mediocre()));
                 health = 3.0;
             },
             PieceType::Castle => {
@@ -76,7 +76,7 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
                 let fab = Fabber::castle();
                 let _ = broadcast.send(ServerMessage::Territory(piece.id().index(), terr.radius));
                 let _ = broadcast.send(ServerMessage::Fabber(piece.id().index(), fab.radius));
-                piece.insert((Collider::cuboid(30.0, 30.0), terr, fab));
+                piece.insert((ev.tp.shape().to_collider(), terr, fab));
                 health = 6.0;
             },
             PieceType::TieFighter => {
