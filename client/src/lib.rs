@@ -17,6 +17,8 @@ use common::types::PieceType;
 use common::VERSION;
 use common::types::Asset;
 use num_traits::cast::FromPrimitive;
+use std::collections::HashMap;
+use common::pathfollower::PathFollower;
 
 
 #[derive(Debug)]
@@ -56,8 +58,6 @@ fn send(message : ClientMessage) {
     message.encode_into(&mut buf);
     send_ws(buf);
 }
-
-use std::collections::HashMap;
 
 
 struct PlayerData {
@@ -132,7 +132,8 @@ struct State {
     money : u32,
     has_tested : bool,
     territory_buf : Vec<f32>,
-    fabber_buf : Vec<f32>
+    fabber_buf : Vec<f32>,
+    path : PathFollower
 }
 
 

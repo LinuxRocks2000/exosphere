@@ -80,7 +80,7 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
                 health = 6.0;
             },
             PieceType::TieFighter => {
-                piece.insert((Collider::cuboid(20.0, 25.0), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::basic_repeater(2)));
+                piece.insert((ev.tp.shape().to_collider(), PathFollower::start(ev.x, ev.y), Ship::normal(), Gun::basic_repeater(2)));
                 health = 3.0;
             },
             PieceType::Sniper => {

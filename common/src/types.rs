@@ -162,6 +162,7 @@ impl PieceType {
             Self::BasicFighter => Shape::Box(41.0, 41.0),
             Self::Bullet => Shape::Box(5.0, 5.0),
             Self::Castle => Shape::Box(60.0, 60.0),
+            Self::TieFighter => Shape::Box(40.0, 50.0),
             _ => Shape::Unimpl
         }
     }

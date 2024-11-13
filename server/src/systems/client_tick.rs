@@ -112,6 +112,7 @@ pub fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePie
                                                         place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
                                                         place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
                                                         place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
+                                                        place.p_simple(x + 200.0, y + 200.0, id, slot, common::types::PieceType::Sniper);
                                                     }
                                                 }
                                             }

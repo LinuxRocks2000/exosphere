@@ -12,30 +12,27 @@
 
 // the PathFollower class
 // at the moment all it does is curate a list of Nodes and an EndNode.
-use bevy::prelude::Entity;
 
-
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, ProtocolRoot)] // it derives protocolroot, despite not being a protocol root. why?
+// the reason is that deriving protocolroot implies that there's a trait implementation for Protocol.
+// I don't know how valid it is but quite frankly, if *you* want to figure out how the fuck the protocol works, be my guest
+// textbook "should have used serde" ngl
+// ... that's actually a good idea
+// TODO: use serde for the protocol, so we can send any serde-able type over the wire (and use their actually-well-built macros)
 pub enum PathNode {
     StraightTo(f32, f32),
-    Target(Entity)
-}
-
-#[derive(Copy, Clone)]
-pub enum EndNode {
-    None,
+    Target(u64), // see bevy::prelude::Entity::from_bits, to_bits
     Rotation(f32)
 }
 
 
 use std::collections::VecDeque;
-use bevy::prelude::Component;
 
 
 #[derive(Component)]
 pub struct PathFollower { // follow a path.
     nodes : VecDeque<PathNode>,
-    end : EndNode,
+    end : Option<PathNode>,
     can_track : bool // can this pathfollower be used to track an object on the board?
     // empty paths are "unlinked"; unlinked objects will not attempt to move at all.
     // path following will never clear the last node in a path (this is the endcap node, and often has endnode data associated with it).
