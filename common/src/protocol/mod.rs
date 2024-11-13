@@ -10,30 +10,51 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
 */
 
-pub mod traits;
-pub mod numbers;
-pub mod misc;
+pub mod serializer;
+pub mod deserializer;
+pub use serializer::ProtocolSerialize;
+pub use deserializer::ProtocolDeserialize;
 
-pub use traits::Protocol;
-pub use traits::ProtocolRoot;
-pub use derive_macro::*;
+use std::fmt;
+use std::fmt::Display;
 
 
-// shameless copy from the obsolete protocol_v3
+
 #[derive(Debug)]
-pub struct DecodeError {}
+pub enum Error {
+    BadInteger,
+    BadFloat,
+    BadString,
+    UnsizedSequence,
+    UnsizedMap,
+    InvalidType,
+    Custom(String)
+}
 
 
-impl std::error::Error for DecodeError {
-    fn description(&self) -> &str {
-        "Bad protocol frame received from a client!"
+impl serde::ser::Error for Error {
+    fn custom<T : Display>(msg : T) -> Self {
+        Self::Custom(msg.to_string())
     }
 }
 
 
-impl std::fmt::Display for DecodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Protocol Decode Error")
+impl serde::de::Error for Error {
+    fn custom<T : Display>(msg : T) -> Self {
+        Self::Custom(msg.to_string())
     }
 }
 
+
+impl Display for Error {
+    fn fmt(&self, formatter : &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str(&format!("protocol encode/decode error {:?}", self))
+    }
+}
+
+
+impl std::error::Error for Error {}
+
+
+pub type Result = std::result::Result<(), Error>;
+pub type Result2<T> = std::result::Result<T, Error>;

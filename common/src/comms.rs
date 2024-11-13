@@ -14,12 +14,11 @@
 // includes Server -> Client and Client -> Server
 // impls where applicable sorted to the bottom of the file
 
-use crate::protocol::ProtocolRoot;
-use crate::protocol::Protocol;
-use crate::protocol::DecodeError;
+use serde_derive::{Serialize, Deserialize};
+//use crate::pathfollower::PathNode;
 
 
-#[derive(Debug, ProtocolRoot, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum ClientMessage { // client -> server
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. See ServerMessage.
     Connect(String, String), // connect with your nickname and the password respectively. doesn't let you place your castle yet.
@@ -28,15 +27,11 @@ pub enum ClientMessage { // client -> server
     // attempt to place an object
     // before the client can place anything else, it must place a castle (type 1). this is the only time in the game that a client can place an object in neutral territory.
     // obviously it's not possible to place a castle in enemy territory
-    StrategyPointAdd(u32, u16, f32, f32), // (id, index, x, y) insert a point to a strategy path at an index
-    StrategyPointUpdate(u32, u16, f32, f32), // (id, index, x, y) move a point on a strategy path
-    StrategyRemove(u32, u16), // (id, index) remove a node from a strategy
-    StrategyClear(u32), // (id) clear a strategy
-    // if any Strategy commands are sent referencing nonexistent nodes on a strategy, or StrategyPointUpdate is sent referencing a non-point strategy node (such
-    // as a teleportal entrance), the server will simply ignore them. This may be a problem in the future.
-    StrategySetEndcapRotation(u32, f32), // (id, r) set the strategy endcap for an object to a rotation
-    StrategyTargetAdd(u32, u32), // (id, target) add a piece to id's strategy
-    GunState(u32, u8) // (id, state) change the state of a gun. 0 = disable, 1 = enable.
+    //StrategyInsert(u64, u16, PathNode), // id, index, node
+    //StrategySet(u64, u16, PathNode), // id, index, node
+    StrategyDelete(u64, u16), // id, index
+    //StrategyEndcapSet(u64, Option<PathNode>),
+    GunState(u64, u8) // (id, state) change the state of a gun. 0 = disable, 1 = enable.
 }
 
 // upon connecting, the server immediately sends the client Test("EXOSPHERE", 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION)
@@ -46,7 +41,7 @@ pub enum ClientMessage { // client -> server
 // this exchange prevents old, underprepared, or incompatible clients from connecting to a game.
 // If a client attempts to do anything before protocol verification, it will be kicked off the server.
 
-#[derive(Debug, ProtocolRoot, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ServerMessage { // server -> client
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. see above blurb.
     GameState(u8, u16, u16), // game state, stage tick, stage total time
@@ -60,21 +55,21 @@ pub enum ServerMessage { // server -> client
     Metadata(u64, f32, f32, u8), // send whatever data (id, board width x height, slot) the client needs to begin rendering the gameboard
     // this also tells the client that it was accepted (e.g. got the right password); getting the password _wrong_ would abort the connection
     // slot tells the client what position it's occupying. 0 = spectating, 1 = free agent, 2-255 = teams.
-    ObjectCreate(f32, f32, f32, u64, u32, u16), // x, y, a, owner, id, type: inform the client of an object.
-    ObjectMove(u32, f32, f32, f32), // id, x, y, a
-    ObjectTrajectoryUpdate(u32, f32, f32, f32, f32, f32, f32), // id, x, y, a, xv, yv, av
-    DeleteObject(u32), // id
-    StrategyCompletion(u32, u16), // (id, remaining) a node in a strategy has been fulfilled, and this is the number of strategy nodes remaining!
+    ObjectCreate(f32, f32, f32, u64, u64, u16), // x, y, a, owner, id, type: inform the client of an object.
+    ObjectMove(u64, f32, f32, f32), // id, x, y, a
+    ObjectTrajectoryUpdate(u64, f32, f32, f32, f32, f32, f32), // id, x, y, a, xv, yv, av
+    DeleteObject(u64), // id
+    StrategyCompletion(u64, u16), // (id, remaining) a node in a strategy has been fulfilled, and this is the number of strategy nodes remaining!
     // this serves as a sort of checksum; if the number of strategy nodes remaining here is different from the number of strategy nodes remaining in the client
     // the client knows there's something wrong and can send StrategyClear to attempt to recover.
     PlayerData(u64, String, u8), // (id, banner, slot): data on another player
     YouLose, // you LOST!
     Winner(u64), // id of the winner. if 0, it was a tie.
-    Territory(u32, f32), // set the territory radius for a piece
-    Fabber(u32, f32), // set the fabber radius for a piece
+    Territory(u64, f32), // set the territory radius for a piece
+    Fabber(u64, f32), // set the fabber radius for a piece
     Disconnect,
     Money(u64, u32), // set the money amount for a client
     // in the future we may want to be able to see the money of our allies, so the id tag could be useful
     Explosion(f32, f32, f32, f32), // x, y, radius, damage: an explosion happened! the client should render it for one frame and then kill it
-    Health(u32, f32), // (id, health): tell a player about the current health of one of its pieces
+    Health(u64, f32), // (id, health): tell a player about the current health of one of its pieces
 }
