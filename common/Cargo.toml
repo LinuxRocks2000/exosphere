@@ -11,7 +11,6 @@ num-derive = "*"
 num-traits = "*"
 bevy = { version = "0.14.0", features = ["dynamic_linking", "trace"], optional = true }
 bevy_rapier2d = { version = "*", optional = true }
-derive_macro = { path = "../derive-macro/" }
 
 [features]
 server = ["dep:bevy_rapier2d", "dep:bevy"]

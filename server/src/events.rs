@@ -15,11 +15,13 @@
 use bevy::prelude::Event;
 use bevy::prelude::Entity;
 use common::types::PieceType;
+use common::PlayerId;
 use crate::components::ExplosionProperties;
+
 
 #[derive(Event)]
 pub(crate) struct NewClientEvent {
-    pub(crate) id : u64
+    pub(crate) id : PlayerId
 }
 
 
@@ -28,7 +30,7 @@ pub(crate) struct PlaceEvent {
     pub(crate) x : f32,
     pub(crate) y : f32,
     pub(crate) a : f32,
-    pub(crate) owner : u64,
+    pub(crate) owner : PlayerId,
     pub(crate) slot : u8,
     pub(crate) tp : PieceType,
     pub(crate) free : bool // do we need to fabber check this one? if free is set to true, fabber and territory checks are skipped
@@ -38,7 +40,7 @@ pub(crate) struct PlaceEvent {
 #[derive(Event)]
 pub(crate) struct ClientKilledEvent { // something happened that could have killed a client
     // we'll healthcheck to see if the client actually died and update game state accordingly
-    pub(crate) client : u64
+    pub(crate) client : PlayerId
 }
 
 
@@ -53,5 +55,5 @@ pub(crate) struct ExplosionEvent { // an explosion was initiated!
 #[derive(Event)]
 pub(crate) struct PieceDestroyedEvent {
     pub(crate) piece : Entity,
-    pub(crate) responsible : u64 // the client responsible for this destruction (== the owner of the piece that did fatal damage)
+    pub(crate) responsible : PlayerId // the client responsible for this destruction (== the owner of the piece that did fatal damage)
 }

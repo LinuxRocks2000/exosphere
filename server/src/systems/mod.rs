@@ -16,3 +16,6 @@ pub use make_thing::*;
 
 pub mod client_tick;
 pub use client_tick::*;
+
+pub mod spaceshipoids;
+pub use spaceshipoids::*;

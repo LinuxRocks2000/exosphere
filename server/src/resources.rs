@@ -20,6 +20,8 @@ use tokio::sync::{mpsc, broadcast};
 use crate::comms::*;
 use crate::Client;
 use crate::Comms;
+use common::comms::Stage;
+use common::PlayerId;
 
 
 // todo: break up GameConfig and GameState into smaller structs for better parallelism
@@ -48,14 +50,24 @@ pub struct GameState {
 
 
 impl GameState {
-    pub fn get_state_byte(&self) -> u8 { // todo: use bit shifting
-        self.io as u8 * 128 + self.playing as u8 * 64 + self.strategy as u8 * 32
+    pub fn get_state_enum(&self) -> Stage {
+        if self.playing {
+            if self.strategy {
+                Stage::MoveShips
+            }
+            else {
+                Stage::Playing
+            }
+        }
+        else {
+            Stage::Waiting
+        }
     }
 }
 
 
 #[derive(Resource, Deref, DerefMut)]
-pub struct ClientMap(pub HashMap<u64, Client>);
+pub struct ClientMap(pub HashMap<PlayerId, Client>);
 
 
 #[derive(Resource, Deref, DerefMut)] // todo: better names (or generic type arguments)

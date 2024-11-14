@@ -17,6 +17,47 @@ pub mod types;
 pub mod fab;
 pub mod pathfollower;
 
+use serde_derive::{ Serialize, Deserialize };
+
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct PieceId(u64);
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+pub struct PlayerId(pub u64);
+
+
+impl PlayerId {
+    pub const SYSTEM : PlayerId = PlayerId(0);
+}
+
+
+impl std::hash::Hash for PieceId {
+    fn hash<H : std::hash::Hasher>(&self, state : &mut H) {
+        self.0.hash(state);
+    }
+}
+
+
+impl std::hash::Hash for PlayerId {
+    fn hash<H : std::hash::Hasher>(&self, state : &mut H) {
+        self.0.hash(state);
+    }
+}
+
+
+#[cfg(feature="server")]
+impl std::convert::From<bevy::prelude::Entity> for PieceId {
+    fn from(item : bevy::prelude::Entity) -> Self {
+        PieceId(item.to_bits())
+    }
+}
+
+#[cfg(feature="server")]
+impl std::convert::Into<bevy::prelude::Entity> for PieceId {
+    fn into(self) -> bevy::prelude::Entity {
+        bevy::prelude::Entity::from_bits(self.0)
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

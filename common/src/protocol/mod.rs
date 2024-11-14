@@ -10,6 +10,8 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
 */
 
+// serde-based protocol serialization and deserialization
+
 pub mod serializer;
 pub mod deserializer;
 pub use serializer::ProtocolSerialize;

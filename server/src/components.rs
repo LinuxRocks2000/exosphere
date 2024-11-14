@@ -19,6 +19,9 @@ use bevy::prelude::Vec2;
 use bevy::ecs::system::SystemId;
 use common::fab::FabLevels;
 use common::types::PieceType;
+use common::{ PieceId, PlayerId };
+use common::pathfollower::PathFollower;
+use crate::solve_spaceship::*;
 
 
 #[derive(Component)]
@@ -26,7 +29,7 @@ pub(crate) struct GamePiece {
     pub(crate) tp : PieceType, // the type of this piece
     // assigned by the gamepiece builder functions
     // todo: do this a better way
-    pub(crate) owner : u64, // entry in the Clients hashmap
+    pub(crate) owner : PlayerId, // entry in the Clients hashmap
     pub(crate) slot : u8, // identity slot of the owner
     // in the future, we may want to eliminate this and instead do lookups in the HashMap (which is swisstable, so it's pretty fast)
     // but for now it's convenient
@@ -38,7 +41,7 @@ pub(crate) struct GamePiece {
 
 
 impl GamePiece {
-    pub(crate) fn new(tp : PieceType, owner : u64, slot : u8, health : f32) -> Self {
+    pub(crate) fn new(tp : PieceType, owner : PlayerId, slot : u8, health : f32) -> Self {
         Self {
             tp,
             owner,
@@ -93,37 +96,6 @@ impl Fabber {
 
     pub(crate) fn is_available(&self, tp : PieceType) -> bool { // determine if this fabber can produce an object
         self.levels >= tp.fabber()
-    }
-}
-
-
-#[derive(Component)]
-pub(crate) struct Ship {
-    pub(crate) speed : f32,
-    pub(crate) acc_profile : f32 // in percentage of speed
-}
-
-
-impl Ship {
-    pub(crate) fn normal() -> Self {
-        return Self {
-            speed : 16.0,
-            acc_profile : 0.33
-        }
-    }
-
-    pub(crate) fn fast() -> Self {
-        return Self {
-            speed : 32.0,
-            acc_profile : 0.5
-        }
-    }
-
-    pub(crate) fn slow() -> Self {
-        return Self {
-            speed : 12.0,
-            acc_profile : 0.33
-        }
     }
 }
 
@@ -282,11 +254,41 @@ impl FieldSensor {
     }
 }
 
+
 #[derive(Component)]
+pub(crate) struct CollisionExplosion { // entities with this component explode whenever they hit anything
+    pub(crate) explosion : ExplosionProperties
+}
+
+
+#[derive(Component)]
+pub struct BoardSetup(pub SystemId);
+
+
+#[derive(Copy, Clone, Component)]
+pub struct ExplosionProperties {
+    pub radius : f32,
+    pub damage : f32
+}
+
+impl ExplosionProperties {
+    pub fn small() -> Self {
+        Self {
+            radius : 100.0,
+            damage : 2.0
+        }
+    }
+}
+
+
+#[derive(Component)]
+pub struct StaticWall;
+
+
 pub(crate) struct Missile {
     pub(crate) decelerator : f32,
     pub(crate) acc_profile : f32,
-    pub(crate) target_lock : Option<Entity>, // missiles can be target-locked to a gamepiece. they will ignore the pathfollower after locking.
+    pub(crate) target_lock : Option<PieceId>, // missiles can be target-locked to a gamepiece. they will ignore the pathfollower after locking.
     pub(crate) intercept_burn : f32, // during the intercept burn, it heavily side-corrects, angular positioning gets much more accurate, and it accelerates at intercept_burn_power.
     pub(crate) intercept_burn_power : f32 // intercept burn begins when it's locked to a target that is nearer than intercept_burn units away.
 }
@@ -330,31 +332,74 @@ impl Missile {
 }
 
 
-#[derive(Component)]
-pub(crate) struct CollisionExplosion { // entities with this component explode whenever they hit anything
-    pub(crate) explosion : ExplosionProperties
+pub(crate) struct Ship {
+    pub(crate) speed : f32,
+    pub(crate) acc_profile : f32 // in percentage of speed
 }
 
 
-#[derive(Component)]
-pub struct BoardSetup(pub SystemId);
+impl Ship {
+    pub(crate) fn normal() -> Self {
+        return Self {
+            speed : 16.0,
+            acc_profile : 0.33
+        }
+    }
 
+    pub(crate) fn fast() -> Self {
+        return Self {
+            speed : 32.0,
+            acc_profile : 0.5
+        }
+    }
 
-#[derive(Copy, Clone, Component)]
-pub struct ExplosionProperties {
-    pub radius : f32,
-    pub damage : f32
-}
-
-impl ExplosionProperties {
-    pub fn small() -> Self {
-        Self {
-            radius : 100.0,
-            damage : 2.0
+    pub(crate) fn slow() -> Self {
+        return Self {
+            speed : 12.0,
+            acc_profile : 0.33
         }
     }
 }
 
 
+impl SpaceshipKinematics for Ship {
+    fn to_position(&mut self, offset : Vec2, angle : f32, vel : Vec2, angvel : f32) -> KinematicResult {
+        KinematicResult::Noop
+    }
+
+    fn to_angle(&mut self, offset : f32, vel : Vec2, angvel : f32) -> KinematicResult {
+        KinematicResult::Noop
+    }
+}
+
+
+impl SpaceshipKinematics for Missile {
+    fn to_position(&mut self, offset : Vec2, angle : f32, vel : Vec2, angvel : f32) -> KinematicResult {
+        KinematicResult::Noop
+    }
+
+    fn to_angle(&mut self, offset : f32, vel : Vec2, angvel : f32) -> KinematicResult {
+        KinematicResult::Noop
+    }
+}
+
+
 #[derive(Component)]
-pub struct StaticWall;
+pub struct Spaceshipoid {
+    pub pathfollower : PathFollower,
+    pub kinematics : Box<dyn SpaceshipKinematics + Send + Sync>
+}
+
+
+impl Spaceshipoid {
+    pub fn of(ship : impl SpaceshipKinematics + Send + Sync + 'static, x : f32, y : f32) -> Self {
+        Self {
+            pathfollower : PathFollower::start(x, y),
+            kinematics : Box::new(ship)
+        }
+    }
+
+    pub fn sensor_tripped(&mut self, thing : PieceId) {
+        self.kinematics.sensor_tripped(thing);
+    }
+}

@@ -38,15 +38,15 @@
   Make sure to document your new type in the `techtree` file in the project root. It should always be the authoritative source on game mechanics.
 */
 
-use num_derive::FromPrimitive;    
-use num_traits::FromPrimitive;
+use num_derive::FromPrimitive;
 use crate::fab::FabLevels;
 #[cfg(feature = "server")]
 use bevy_rapier2d::prelude::Collider;
+use serde_derive::{ Serialize, Deserialize };
 
 
 #[repr(u16)]
-#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive, Serialize, Deserialize)]
 pub enum PieceType {
     BasicFighter = 0,
     Castle = 1,

@@ -31,29 +31,26 @@ use futures_util::{StreamExt, SinkExt};
 use tokio::sync::{Mutex, mpsc, broadcast};
 use std::sync::Arc;
 use bevy::ecs::schedule::ScheduleLabel;
-use std::f32::consts::PI;
 use rand::Rng;
 use std::collections::HashMap;
 
 use common::protocol::*;
 use common::types::*;
 use common::VERSION;
+use common::PlayerId;
 pub use common::comms;
 use comms::{ ClientMessage, ServerMessage };
 
 
 pub enum Comms { // webserver -> game engine
     ClientConnect(Client), // (client) a client connected
-    ClientDisconnect(u64), // (id) a client disconnected
-    MessageFrom(u64, ClientMessage) // (id, message) a client sent a message that was successfully decoded and filtered
+    ClientDisconnect(PlayerId), // (id) a client disconnected
+    MessageFrom(PlayerId, ClientMessage) // (id, message) a client sent a message that was successfully decoded and filtered
 }
 
 
 pub mod solve_spaceship;
 use solve_spaceship::*;
-
-pub mod pathfollower;
-use pathfollower::*;
 
 pub mod events;
 use events::*;
@@ -72,8 +69,8 @@ use resources::*;
 
 
 pub struct Client {
-    id : u64,
-    banner : String,
+    id : PlayerId,
+    nickname : String,
     slot : u8,
     channel : std::sync::Mutex<tokio::sync::mpsc::Sender<ServerMessage>>,
     has_placed_castle : bool,
@@ -94,13 +91,13 @@ impl Client {
 
     fn collect(&mut self, amount : u32) {
         self.money += amount;
-        self.send(ServerMessage::Money(self.id, self.money));
+        self.send(ServerMessage::Money { id : self.id, amount : self.money });
     }
 
     fn charge(&mut self, amount : u32) -> bool { // returns if we actually successfully made the charge or not
         if self.money >= amount {
             self.money -= amount;
-            self.send(ServerMessage::Money(self.id, self.money));
+            self.send(ServerMessage::Money { id : self.id, amount : self.money });
             return true;
         }
         return false;
@@ -115,7 +112,7 @@ enum Bullets {
 }
 
 
-fn discharge_barrel(commands : &mut Commands, owner : u64, barrel : u16, gun : &Gun, position : &Transform, velocity : &Velocity, broadcast : &ResMut<Sender>) {
+fn discharge_barrel(commands : &mut Commands, owner : PlayerId, barrel : u16, gun : &Gun, position : &Transform, velocity : &Velocity, broadcast : &ResMut<Sender>) {
     let ang = position.rotation.to_euler(EulerRot::ZYX).0;
     let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 450.0);
     let mut transform = position.clone();
@@ -127,14 +124,14 @@ fn discharge_barrel(commands : &mut Commands, owner : u64, barrel : u16, gun : &
                 linear_damping : 0.0,
                 angular_damping : 0.0
             }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), PieceType::Bullet as u16));
+            let _ = broadcast.send(ServerMessage::ObjectCreate { x : transform.translation.x, y : transform.translation.y, a : ang, owner : PlayerId::SYSTEM, id : piece.id().into(), tp : PieceType::Bullet });
         },
         Bullets::Bomb(_, range) => {
             let piece = commands.spawn((GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
                 linear_damping : 0.0,
                 angular_damping : 0.0
             }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-            let _ = broadcast.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, ang, 0, piece.id().index(), PieceType::SmallBomb as u16));
+            let _ = broadcast.send(ServerMessage::ObjectCreate { x : transform.translation.x, y : transform.translation.y, a : ang, owner : PlayerId::SYSTEM, id : piece.id().into(), tp : PieceType::SmallBomb });
         }
     }
 }
@@ -170,7 +167,7 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &Ga
 fn ttl(mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
     for (entity, mut ttl) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
-            kill_event.send(PieceDestroyedEvent { piece : entity, responsible : 0 });
+            kill_event.send(PieceDestroyedEvent { piece : entity, responsible : PlayerId::SYSTEM });
         }
         else {
             ttl.lifetime -= 1;
@@ -200,7 +197,7 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
                 client_kill.send(ClientKilledEvent { client : piece.owner });
             }
             commands.entity(evt.piece).despawn();
-            if let Err(_) = broadcast.send(ServerMessage::DeleteObject(evt.piece.index())) {
+            if let Err(_) = broadcast.send(ServerMessage::DeleteObject { id : evt.piece.into() }) {
                 println!("game engine lost connection to webserver. this is probably not critical.");
             }
         }
@@ -224,7 +221,7 @@ fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &
 
 fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
         mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, Option<&mut Seed>)>,
-        mut missiles : Query<&mut Missile>,
+        mut spaceshipoids : Query<&mut Spaceshipoid>,
         farms : Query<&Farmhouse>,
         explode_on_collision : Query<(Entity, &CollisionExplosion, &Transform)>,
         explosions : Query<&ExplosionProperties>,
@@ -237,7 +234,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
     for event in collision_events.read() {
         if let CollisionEvent::Started(one, two, _) = event {
             if let Ok((entity, explode, pos)) = explode_on_collision.get(*one) {
-                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : 0 });
+                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : PlayerId::SYSTEM });
                 explosion_event.send(ExplosionEvent {
                     x : pos.translation.x,
                     y : pos.translation.y,
@@ -245,7 +242,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 });
             }
             if let Ok((entity, explode, pos)) = explode_on_collision.get(*two) {
-                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : 0 });
+                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : PlayerId::SYSTEM });
                 explosion_event.send(ExplosionEvent {
                     x : pos.translation.x,
                     y : pos.translation.y,
@@ -254,8 +251,9 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             }
             let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
             let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
-            let mut one_killer : u64 = 0; // the id of the player that owned the piece that damaged the piece
-            let mut two_killer : u64 = 0; // that is one HELL of a sentence
+            let mut one_killer = PlayerId::SYSTEM; // the id of the player that owned the piece that damaged the piece
+            let mut two_killer = PlayerId::SYSTEM; // that is one HELL of a sentence
+            // [tyler, several months later] that it is, laddie. that it is.
             // todo: defense and damage modifiers
             if let Ok(v1) = velocities.get(*one) {
                 if let Ok(v2) = velocities.get(*two) {
@@ -288,7 +286,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 if let Ok((entity_one, mut piece_one, _, _)) = pieces.get_mut(*one) {
                     piece_one.health -= one_dmg;
                     if let Some(client) = clients.get(&piece_one.owner) {
-                        client.send(ServerMessage::Health(entity_one.index(), piece_one.health / piece_one.start_health));
+                        client.send(ServerMessage::Health { id : entity_one.into(), health : piece_one.health / piece_one.start_health });
                     }
                     if piece_one.health <= 0.0 {
                         piece_destroy.send(PieceDestroyedEvent { piece : entity_one, responsible : one_killer });
@@ -299,7 +297,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 if let Ok((entity_two, mut piece_two, _, _)) = pieces.get_mut(*two) {
                     piece_two.health -= two_dmg;
                     if let Some(client) = clients.get(&piece_two.owner) {
-                        client.send(ServerMessage::Health(entity_two.index(), piece_two.health / piece_two.start_health));
+                        client.send(ServerMessage::Health { id : entity_two.into(), health : piece_two.health / piece_two.start_health });
                     }
                     if piece_two.health <= 0.0 {
                         piece_destroy.send(PieceDestroyedEvent { piece : entity_two, responsible : two_killer });
@@ -315,7 +313,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
             sensor = sensors.get(*two);
         }
         if let Ok(sensor) = sensor {
-            let mut sensor_owner : u64 = 0;
+            let mut sensor_owner = PlayerId::SYSTEM;
             let mut sensor_slot : u8 = 0;
             if let Ok((_, sensored_piece, _, _)) = pieces.get(sensor.attached_to) {
                 sensor_owner = sensored_piece.owner;
@@ -339,10 +337,8 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                 }
                 if gamepiece.owner != sensor_owner && (gamepiece.slot != sensor_slot || gamepiece.slot == 1) { // check if the piece is enemy or not
                     if sensor.attached_to != entity { // missiles can't attempt to attack themselves
-                        if let Ok(mut missile) = missiles.get_mut(sensor.attached_to) {       
-                            if missile.target_lock.is_none() {
-                                missile.target_lock = Some(entity);
-                            }
+                        if let Ok(mut shipoid) = spaceshipoids.get_mut(sensor.attached_to) {       
+                            shipoid.sensor_tripped(entity.into());
                         }
                     }
                 }
@@ -355,7 +351,7 @@ fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
 struct Placer<'a> (EventWriter<'a, PlaceEvent>);
 
 impl Placer<'_> {
-    fn p_simple(&mut self, x : f32, y : f32, client : u64, slot : u8, tp : PieceType) {
+    fn p_simple(&mut self, x : f32, y : f32, client : PlayerId, slot : u8, tp : PieceType) {
         self.0.send(PlaceEvent {
             x,
             y,
@@ -367,7 +363,7 @@ impl Placer<'_> {
         });
     }
 
-    fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : u64, slot : u8) {
+    fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : PlayerId, slot : u8) {
         self.0.send(PlaceEvent {
             x, y, a,
             owner : client,
@@ -380,14 +376,14 @@ impl Placer<'_> {
     fn chest_free(&mut self, x : f32, y : f32) {
         self.0.send(PlaceEvent {
             x, y, a : 0.0,
-            owner : 0,
+            owner : PlayerId::SYSTEM,
             slot : 0,
             tp : PieceType::Chest,
             free : true
         });
     }
 
-    fn castle(&mut self, x : f32, y : f32, client : u64, slot : u8) {
+    fn castle(&mut self, x : f32, y : f32, client : PlayerId, slot : u8) {
         self.0.send(PlaceEvent {
             x, y, a : 0.0,
             owner : client,
@@ -402,7 +398,7 @@ impl Placer<'_> {
 fn boom(mut commands : Commands, mut explosions : EventReader<ExplosionEvent>, sender : ResMut<Sender>) { // manage explosions
     // explosions are really just sensored colliders with an explosionproperties
     for explosion in explosions.read() {
-        let _ = sender.send(ServerMessage::Explosion(explosion.x, explosion.y, explosion.props.radius, explosion.props.damage));
+        let _ = sender.send(ServerMessage::Explosion { x : explosion.x, y : explosion.y, radius : explosion.props.radius, damage : explosion.props.damage });
         commands.spawn((RigidBody::Dynamic, explosion.props, Collider::cuboid(explosion.props.radius, explosion.props.radius), TransformBundle::from(Transform::from_xyz(explosion.x, explosion.y, 0.0)), ActiveEvents::COLLISION_EVENTS));
     }
 }
@@ -414,14 +410,14 @@ fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &Explosi
     }
 }
 
-
+/*
 fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velocity, &Transform, &Ship, &mut PathFollower, &GamePiece, &Collider, Entity)>, targetables : Query<&Transform>, mut clients : ResMut<ClientMap>) {
     for (mut force, mut impulse, velocity, transform, ship, mut follower, piece, collider, entity) in ships.iter_mut() {
         if let Some(next) = follower.get_next() {
             let gpos = match next {
                 PathNode::StraightTo(x, y) => Vec2 { x, y },
                 PathNode::Target(ent) => {
-                    if let Ok(tg) = targetables.get(ent) {
+                    if let Ok(tg) = targetables.get(ent.into()) {
                         tg.translation.truncate()
                     }
                     else {
@@ -451,17 +447,9 @@ fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velo
                 force.torque = 0.0;
                 impulse.impulse = velocity.linvel / inv_mass * -0.1;
                 impulse.torque_impulse = 0.0;
-                if follower.bump() {
+                if follower.bump().unwrap() { // unwrap should be safe; the only failure cases of follower.bump are overflows that are EXTREMELY unlikely to ever actually occur
                     if let Some(client) = clients.get_mut(&piece.owner) {
-                        client.send(ServerMessage::StrategyCompletion(entity.index(), follower.len()));
-                    }
-                }
-                else {
-                    match follower.get_endcap() {
-                        EndNode::Rotation(r) => {
-                            impulse.torque_impulse = (-loopify(r, cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
-                        }
-                        EndNode::None => {}
+                        client.send(ServerMessage::StrategyCompletion { id : entity.into(), remaining : follower.len().unwrap() }); // ditto
                     }
                 }
             }
@@ -515,7 +503,7 @@ fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, 
             else {
                 if follower.bump() {
                     if let Some(client) = clients.get_mut(&piece.owner) {
-                        client.send(ServerMessage::StrategyCompletion(entity.index(), follower.len()));
+                        client.send(ServerMessage::StrategyCompletion { id : entity.index(), remaining : follower.len() });
                     }
                 }
                 else {
@@ -529,19 +517,26 @@ fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, 
             }
         }
     }
-}
+}*/
 
 
 fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform, Option<&Territory>, Option<&Fabber>)>) {
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
             for (entity, piece, transform, territory, fabber) in objects.iter() {
-                client.send(ServerMessage::ObjectCreate(transform.translation.x, transform.translation.y, transform.rotation.to_euler(EulerRot::ZYX).0, piece.owner, entity.index(), piece.tp as u16));
+                client.send(ServerMessage::ObjectCreate {
+                    x : transform.translation.x,
+                    y : transform.translation.y,
+                    a : transform.rotation.to_euler(EulerRot::ZYX).0,
+                    owner : piece.owner,
+                    id : entity.into(),
+                    tp : piece.tp
+                });
                 if let Some(territory) = territory {
-                    client.send(ServerMessage::Territory(entity.index(), territory.radius));
+                    client.send(ServerMessage::Territory { id : entity.into(), radius : territory.radius });
                 }
                 if let Some(fabber) = fabber {
-                    client.send(ServerMessage::Fabber(entity.index(), fabber.radius));
+                    client.send(ServerMessage::Fabber { id : entity.into(), radius : fabber.radius });
                 }
             }
         }
@@ -556,12 +551,12 @@ fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &mu
         // updates on position
         if (pos - piece.last_update_pos).length() > 1.0 || loopify(ang, piece.last_update_ang).abs() > 0.01 {
             // are basically straight lines.
-            let _ = broadcast.send(ServerMessage::ObjectMove( // ignore the errors
-                entity.index(),
-                pos.x,
-                pos.y,
-                transform.rotation.to_euler(EulerRot::ZYX).0
-            ));
+            let _ = broadcast.send(ServerMessage::ObjectMove { // ignore the errors
+                id : entity.into(),
+                x : pos.x,
+                y : pos.y,
+                a : transform.rotation.to_euler(EulerRot::ZYX).0
+            });
             piece.last_update_pos = pos;
             piece.last_update_ang = ang;
         }
@@ -593,7 +588,7 @@ fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, co
             state.playing = true;
         }
     }
-    let _ = broadcast.send(ServerMessage::GameState (state.get_state_byte(), state.tick, state.time_in_stage));
+    let _ = broadcast.send(ServerMessage::GameState { stage : state.get_state_enum(), tick_in_stage : state.tick, stage_duration : state.time_in_stage });
 }
 
 
@@ -650,7 +645,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
     if did_something { // only if we made a change does it make sense to update the state here
         if state.playing && state.currently_playing < 2 {
             if state.currently_playing == 1 {
-                let mut winid : u64 = 0;
+                let mut winid = PlayerId::SYSTEM;
                 for (id, client) in clients.iter() {
                     if client.alive {
                         winid = *id;
@@ -658,7 +653,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
                     }
                 }
                 for (_, client) in clients.iter() {
-                    client.send(ServerMessage::Winner(winid));
+                    client.send(ServerMessage::Winner { id : winid });
                     client.send(ServerMessage::Disconnect);
                 }
             }
@@ -724,7 +719,7 @@ async fn main() {
         .map(|ws : warp::ws::Ws, top_id : Arc<Mutex<u64>>, to_bevy : mpsc::Sender<Comms>, mut from_bevy_broadcast : broadcast::Receiver<ServerMessage>| {
             ws.max_frame_size(MAX_FRAME_SIZE).on_upgrade(|client| async move {
                 let mut topid = top_id.lock().await;
-                let my_id : u64 = *topid;
+                let my_id = PlayerId(*topid);
                 *topid += 1;
                 drop(topid);
                 let (mut client_tx, mut client_rx) = client.split();
@@ -733,14 +728,14 @@ async fn main() {
                 let mut cl = Some(Client {
                     has_placed_castle : false,
                     id : my_id,
-                    banner : "None".to_string(),
+                    nickname : "None".to_string(),
                     slot : 0,
                     channel : std::sync::Mutex::new(from_bevy_tx),
                     alive : false,
                     money : 0,
                     connected : false
                 });
-                if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode())).await {
+                if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode().unwrap())).await {
                     println!("client disconnected before handshake");
                     return;
                 }
@@ -751,7 +746,7 @@ async fn main() {
                                 Some(msg) => {
                                     if let Ok(msg) = msg {
                                         if msg.is_binary() {
-                                            if let Ok(frame) = ClientMessage::decode_from(&msg.as_bytes()) {
+                                            if let Ok(frame) = ClientMessage::decode(&msg.as_bytes()) {
                                                 if me_verified {
                                                     if let Err(_) = to_bevy.send(Comms::MessageFrom(my_id, frame)).await {
                                                         println!("channel failure 1: lost connection to game engine");
@@ -801,7 +796,7 @@ async fn main() {
                         msg = from_bevy_rx.recv() => {
                             match msg {
                                 Some(msg) => {
-                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(msg.encode())).await {
+                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(msg.encode().unwrap())).await {
                                         println!("channel failure 4");
                                         break 'cli_loop;
                                     }
@@ -819,7 +814,7 @@ async fn main() {
                         msg = from_bevy_broadcast.recv() => {
                             match msg {
                                 Ok(msg) => {
-                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(msg.encode())).await {
+                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(msg.encode().unwrap())).await {
                                         println!("channel failure 6");
                                         break 'cli_loop;
                                     }
@@ -853,7 +848,7 @@ async fn main() {
         .add_systems(
             PlaySchedule,
             (
-                move_ships, move_missiles, shoot, ttl, seed_mature, handle_collisions
+                move_spaceshipoids, shoot, ttl, seed_mature, handle_collisions
             )
         )
         .init_schedule(PlaySchedule)

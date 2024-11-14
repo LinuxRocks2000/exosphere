@@ -304,7 +304,7 @@ impl State {
     }
 
     pub fn on_message(&mut self, message : Vec<u8>) {
-        let message = ServerMessage::decode_from(&message);
+        let message = ServerMessage::decode(&message);
         if let Ok(ref msg) = message {
             if self.has_tested {
                 match msg {

@@ -17,6 +17,8 @@
 // everything uses bevy's Vec2, which conveniently is also what rapier provides! so most of these functions are pretty easy to use
 use bevy::math::f32::Vec2;
 use std::f32::consts::PI;
+use common::pathfollower::PathNode;
+use common::PieceId;
 
 
 // the quintessential point-a to point-b linear space maneuver, but stateless
@@ -91,4 +93,42 @@ pub fn space_gyro(current_position : f32, goal_position : f32, current_rotationa
     else {
         return 0.0;
     }
+}
+
+
+pub enum KinematicResult {
+    Thrust(Vec2, f32), // apply impulses
+    Noop, // we don't want to do anything
+    Done // calculated offsets and velocities are in target range, next question!
+}
+
+
+pub trait SpaceshipKinematics {
+    // move to a position (it doesn't have to know the details, just that it has to get there), given the offset and the current angle of the ship
+    fn to_position(&mut self, offset : Vec2, angle : f32, vel : Vec2, angvel : f32) -> KinematicResult; // (impulse, torque_impulse)
+
+    // same as to_position, except it's tracking a piece rather than going to a static point
+    fn to_position_tracking(&mut self, offset : Vec2, angle : f32, vel : Vec2, angvel : f32) -> KinematicResult {
+        self.to_position(offset, angle, vel, angvel)
+    }
+
+    // rotate to an angle given the current angle offset
+    fn to_angle(&mut self, offset : f32, vel : Vec2, angvel : f32) -> KinematicResult; // torque_impulse
+
+    // the spaceshipoid may optionally provide a supplementary target through this function
+    fn node_override(&mut self) -> Option<PathNode> {
+        None
+    }
+
+    // if the overridden target was acquired by report (or failed to target track), this is called:
+    fn override_complete(&mut self) {
+        
+    }
+
+    // a sensor attached to this thing has collided with an enemy piece!
+    fn sensor_tripped(&mut self, _thing : PieceId) {
+
+    }
+
+    // the return values are automatically multiplied by mass to get sane outputs
 }
