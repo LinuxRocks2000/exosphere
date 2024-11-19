@@ -2,3 +2,6 @@ server/target/
 client/target/
 common/target/
 client/pkg/
+server/Cargo.lock
+client/Cargo.lock
+common/Cargo.lock

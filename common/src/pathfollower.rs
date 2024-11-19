@@ -11,7 +11,7 @@
 */
 
 // the PathFollower class
-// at the moment all it does is curate a list of Nodes and an EndNode.
+// at the moment all it does is curate a list of Nodes
 
 use serde_derive::{ Serialize, Deserialize };
 use crate::PieceId;
@@ -21,7 +21,7 @@ use crate::PieceId;
 pub enum PathNode {
     StraightTo(f32, f32),
     Target(PieceId),
-    Rotation(f32)
+    Rotation(f32, u16) // angle, duration
 }
 
 
@@ -29,10 +29,9 @@ use std::collections::VecDeque;
 
 
 pub struct PathFollower { // follow a path.
-    nodes : VecDeque<PathNode>,
-    end : Option<PathNode>
+    nodes : VecDeque<PathNode>
     // empty paths are "unlinked"; unlinked objects will not attempt to move at all.
-    // path following will never clear the last node in a path (this is the endcap node, and often has endnode data associated with it).
+    // path following will never clear the last node in a path (this is the endcap node).
 }
 
 
@@ -42,20 +41,30 @@ impl PathFollower {
             self.nodes.get(0).copied()
         }
         else {
-            self.end
+            None
         }
     }
 
     pub fn len(&self) -> Result<u16, impl std::error::Error> {
-        (self.nodes.len() + match self.end {
-            Some(_) => 1,
-            None => 0
-        }).try_into()
+        self.nodes.len().try_into()
+    }
+
+    pub fn endex(&self) -> Result<u16, impl std::error::Error> { // return the index needed to add a new node to this path
+        self.nodes.len().try_into()
     }
 
     pub fn bump(&mut self) -> Result<bool, impl std::error::Error> { // if it's determined that we've completed a goal, truncate and go to the next one
         // returns true if the node was actually bumped, false otherwise (it won't bump if doing so would unlink this piece)
-        if match self.len() { Ok(v) => v, Err(e) => { return Err(e); } } > 0 {
+        if match self.len() { Ok(v) => v, Err(e) => { return Err(e); } } > 1 {
+            #[cfg(feature="server")]
+            { // if we're the server, run the code that makes rotation durations work
+                if let Some(PathNode::Rotation(_, dur)) = self.nodes.get_mut(0) {
+                    if *dur > 0 {
+                        *dur -= 1;
+                        return Ok(false);
+                    }
+                }
+            }
             self.nodes.pop_front();
             Ok(true)
         }
@@ -66,8 +75,7 @@ impl PathFollower {
 
     pub fn start(x : f32, y : f32) -> Self {
         Self {
-            nodes : VecDeque::from([PathNode::StraightTo(x, y)]),
-            end : None
+            nodes : VecDeque::from([PathNode::StraightTo(x, y)])
         }
     }
 
@@ -87,7 +95,6 @@ impl PathFollower {
 
     pub fn clear(&mut self) {
         self.nodes.clear();
-        self.end = None;
     }
 
     pub fn remove_node(&mut self, index : u16) {
@@ -96,7 +103,39 @@ impl PathFollower {
         }
     }
 
-    pub fn set_endcap(&mut self, end : Option<PathNode>) {
-        self.end = end;
+    pub fn iter<'a>(&'a self) -> PathIter<'a> {
+        PathIter {
+            path : self,
+            index : 0
+        }
+    }
+
+    pub fn get(&self, ind : usize) -> Option<PathNode> {
+        if ind < self.nodes.len() {
+            Some(self.nodes[ind])
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn get_last(&self) -> Option<PathNode> {
+        self.get(self.nodes.len() - 1)
+    }
+}
+
+
+pub struct PathIter<'a> {
+    path : &'a PathFollower,
+    index : usize
+}
+
+
+impl<'a> Iterator for PathIter<'a> {
+    type Item = PathNode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.index += 1;
+        self.path.get(self.index - 1)
     }
 }

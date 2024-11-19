@@ -411,52 +411,6 @@ fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &Explosi
 }
 
 /*
-fn move_ships(mut ships : Query<(&mut ExternalForce, &mut ExternalImpulse, &Velocity, &Transform, &Ship, &mut PathFollower, &GamePiece, &Collider, Entity)>, targetables : Query<&Transform>, mut clients : ResMut<ClientMap>) {
-    for (mut force, mut impulse, velocity, transform, ship, mut follower, piece, collider, entity) in ships.iter_mut() {
-        if let Some(next) = follower.get_next() {
-            let gpos = match next {
-                PathNode::StraightTo(x, y) => Vec2 { x, y },
-                PathNode::Target(ent) => {
-                    if let Ok(tg) = targetables.get(ent.into()) {
-                        tg.translation.truncate()
-                    }
-                    else {
-                        follower.bump();
-                        continue;
-                    }
-                }
-            };
-            let cpos = transform.translation.truncate();
-            let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
-            let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
-            if (gpos - cpos).length() > 15.0 {
-                impulse.impulse = if loopify(cangle, (gpos - cpos).to_angle()).abs() < PI / 6.0 {
-                    Vec2::from_angle(cangle) / inv_mass * linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 10.0, ship.speed * 10.0 * ship.acc_profile)
-                }
-                else {
-                    Vec2::ZERO
-                };
-                impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.2; // linear deviation correction thrusters
-                impulse.torque_impulse = (-loopify((gpos - cpos).to_angle(), cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
-                //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
-                // this can produce odd effects at close approach, hence the normalizer code
-                //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
-            }
-            else {
-                force.force = Vec2::ZERO;
-                force.torque = 0.0;
-                impulse.impulse = velocity.linvel / inv_mass * -0.1;
-                impulse.torque_impulse = 0.0;
-                if follower.bump().unwrap() { // unwrap should be safe; the only failure cases of follower.bump are overflows that are EXTREMELY unlikely to ever actually occur
-                    if let Some(client) = clients.get_mut(&piece.owner) {
-                        client.send(ServerMessage::StrategyCompletion { id : entity.into(), remaining : follower.len().unwrap() }); // ditto
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, &Transform, &mut Missile, &mut PathFollower, &Collider, &GamePiece)>, targetables : Query<&Transform>, targets : Query<&Transform>, mut clients : ResMut<ClientMap>) {
     for (entity, mut impulse, velocity, transform, mut missile, mut follower, collider, piece) in missiles.iter_mut() {
         if let Some(next) = follower.get_next() {

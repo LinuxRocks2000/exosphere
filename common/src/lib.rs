@@ -16,6 +16,8 @@ pub const VERSION : u8 = 1; // bump this up every time a major change is made (o
 pub mod types;
 pub mod fab;
 pub mod pathfollower;
+mod steal_mut;
+pub use steal_mut::steal_mut;
 
 use serde_derive::{ Serialize, Deserialize };
 

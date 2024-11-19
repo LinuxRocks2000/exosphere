@@ -22,7 +22,7 @@ export function render_background(fabbers_buf, fabber_count, territories_buf, te
 }
 
 
-export function ctx_draw_sprite(asset, x, y, a, w, h) {
+export function ctx_draw_image(asset, x, y, a, w, h) {
     let image = document.getElementById(asset);
     if (!image) {
         image = new Image();
@@ -79,9 +79,26 @@ export function ctx_stroke(wid, color) {
     window.exosphere.ctx.strokeStyle = color;
 }
 
+export function ctx_fill(color) {
+    window.exosphere.ctx.fillStyle = color;
+}
+
 export function ctx_outline_circle(x, y, rad) {
     window.exosphere.ctx.beginPath();
     window.exosphere.ctx.arc(x, y, rad, 0, 2 * Math.PI);
+    window.exosphere.ctx.stroke();
+}
+
+export function ctx_fill_circle(x, y, rad) {
+    window.exosphere.ctx.beginPath();
+    window.exosphere.ctx.arc(x, y, rad, 0, 2 * Math.PI);
+    window.exosphere.ctx.fill();
+}
+
+export function ctx_line_between(x1, y1, x2, y2) {
+    window.exosphere.ctx.beginPath();
+    window.exosphere.ctx.moveTo(x1, y1);
+    window.exosphere.ctx.lineTo(x2, y2);
     window.exosphere.ctx.stroke();
 }
 

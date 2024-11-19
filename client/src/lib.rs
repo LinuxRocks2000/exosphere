@@ -12,13 +12,14 @@
 
 use wasm_bindgen::prelude::*;
 use common::comms::*;
-use common::protocol::Protocol;
 use common::types::PieceType;
 use common::VERSION;
 use common::types::Asset;
-use num_traits::cast::FromPrimitive;
 use std::collections::HashMap;
-use common::pathfollower::PathFollower;
+use common::pathfollower::{ PathFollower, PathIter, PathNode };
+use common::protocol::{ ProtocolSerialize, ProtocolDeserialize };
+use common::{ PieceId, PlayerId };
+use common::steal_mut;
 
 
 #[derive(Debug)]
@@ -45,23 +46,23 @@ extern "C" {
     fn set_offset(x : f32, y : f32);
     fn set_time(tick : u16, stage : u16, phase_name : &str);
     fn ctx_stroke(width : f32, color : &str);
+    fn ctx_fill(color : &str);
     fn ctx_outline_circle(x : f32, y : f32, rad : f32);
+    fn ctx_fill_circle(x : f32, y : f32, rad : f32);
     fn set_money(amount : u32);
     fn render_background(fabbers_buf : &mut [f32], fabbers_count : usize, territories_buf : &mut [f32], territory_count : usize);
-    fn ctx_draw_sprite(resource : &str, x : f32, y : f32, a : f32, w : f32, h : f32); // the difference between draw_sprite and draw_image is that draw_sprite includes an angle of rotation
-    // and also maybe draw_image doesn't exist...
+    fn ctx_draw_image(resource : &str, x : f32, y : f32, a : f32, w : f32, h : f32); // draw an image at a given position and angle
+    fn ctx_line_between(x1 : f32, y1 : f32, x2 : f32, y2 : f32);
 }
 
 
 fn send(message : ClientMessage) {
-    let mut buf = vec![0u8; message.size()];
-    message.encode_into(&mut buf);
-    send_ws(buf);
+    send_ws(message.encode().unwrap());
 }
 
 
 struct PlayerData {
-    id : u64,
+    id : PlayerId,
     slot : u8,
     name : String,
     money : u32
@@ -97,13 +98,31 @@ struct FabberData {
 
 
 struct ObjectData {
-    id : u32,
+    id : PieceId,
     tp : PieceType,
     x : f32,
     y : f32,
     a : f32,
-    owner : u64,
-    health : f32
+    owner : PlayerId,
+    health : f32,
+    path : PathFollower
+}
+
+
+impl ObjectData {
+    fn path_iter<'a>(&'a self) -> PathIter<'a> {
+        self.path.iter()
+    }
+
+    fn extend_path(&mut self, node : PathNode) {
+        let endex = self.path.endex().unwrap();
+        self.path.insert_node(endex, node);
+        send(ClientMessage::StrategyInsert {
+            piece : self.id,
+            index : endex,
+            node
+        });
+    }
 }
 
 
@@ -111,18 +130,16 @@ struct ObjectData {
 struct State {
     gameboard_width : f32,
     gameboard_height : f32,
-    id : u64,
+    id : PlayerId,
     slot : u8,
-    is_io : bool,
-    playing : bool,
-    strategy : bool,
     tick : u16,
-    time_in_stage : u16,
+    stage_duration : u16,
+    stage : Stage,
     global_tick : u32,
-    player_data : HashMap<u64, PlayerData>,
-    object_data : HashMap<u32, ObjectData>,
-    territory_data : HashMap<u32, TerritoryData>,
-    fabber_data : HashMap<u32, FabberData>,
+    player_data : HashMap<PlayerId, PlayerData>,
+    object_data : HashMap<PieceId, ObjectData>,
+    territory_data : HashMap<PieceId, TerritoryData>,
+    fabber_data : HashMap<PieceId, FabberData>,
     inputs : InputState,
     off_x : f32,
     off_y : f32,
@@ -133,7 +150,8 @@ struct State {
     has_tested : bool,
     territory_buf : Vec<f32>,
     fabber_buf : Vec<f32>,
-    path : PathFollower
+    active_piece : Option<PieceId>,
+    hovered : Option<PieceId>
 }
 
 
@@ -144,7 +162,7 @@ const SCROLL_MAX : f32 = 30.0;
 
 impl State {
     fn place(&self, tp : PieceType) {
-        send(ClientMessage::PlacePiece(self.inputs.mouse_x, self.inputs.mouse_y, tp as u16));
+        send(ClientMessage::PlacePiece { x : self.inputs.mouse_x, y : self.inputs.mouse_y, tp });
     }
 
     fn overlay(&mut self) {
@@ -169,8 +187,8 @@ impl State {
         render_background(&mut self.fabber_buf, self.fabber_data.len(), &mut self.territory_buf, self.territory_data.len());
     }
 
-    fn is_friendly(&self, other : u64) -> bool {
-        if other == 0 {
+    fn is_friendly(&self, other : PlayerId) -> bool {
+        if other == PlayerId::SYSTEM {
             return false;
         }
         if other == self.id {
@@ -197,13 +215,11 @@ impl State {
         Self {
             gameboard_height : 0.0,
             gameboard_width : 0.0,
-            id : 0,
+            id : PlayerId::SYSTEM,
             slot : 0,
-            is_io: false,
-            playing: false,
-            strategy: false,
+            stage : Stage::Waiting,
             tick : 0,
-            time_in_stage : 0,
+            stage_duration : 0,
             global_tick : 0,
             player_data : HashMap::new(),
             territory_data : HashMap::new(),
@@ -223,7 +239,9 @@ impl State {
             money : 0,
             has_tested : false,
             territory_buf : vec![],
-            fabber_buf : vec![]
+            fabber_buf : vec![],
+            active_piece : None,
+            hovered : None
         }
     }
 
@@ -253,9 +271,7 @@ impl State {
             self.x_scroll_ramp = 0.0;
         }
         self.overlay();
-        set_offset(self.off_x, self.off_y);
-        ctx_stroke(2.0, "white");
-        ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, 5.0);
+        self.hovered = None;
         for obj in self.object_data.values() {
             let resource = match obj.tp.asset() {
                 Asset::Simple(uri) => uri,
@@ -270,8 +286,69 @@ impl State {
                 Asset::Unimpl => "notfound.svg"
             };
             let wh = obj.tp.shape().to_bbox();
-            ctx_draw_sprite(resource, obj.x, obj.y, obj.a, wh.0, wh.1);
+            ctx_draw_image(resource, obj.x, obj.y, obj.a, wh.0, wh.1);
+            let mut running_x = obj.x;
+            let mut running_y = obj.y;
+            ctx_stroke(1.0, "white");
+            if obj.tp.user_movable() {
+                for node in obj.path_iter() {
+                    let (x, y) = match node {
+                        PathNode::StraightTo(x, y) => {
+                            (x, y)
+                        },
+                        PathNode::Target(piece) => {
+                            if let Some(piece) = self.object_data.get(&piece) {
+                                (piece.x, piece.y)
+                            }
+                            else {
+                                (running_x, running_y)
+                            }
+                        },
+                        PathNode::Rotation(a, _) => {
+                            ctx_draw_image("rotation_arrow.svg", running_x, running_y, a, 30.0, 30.0);
+                            (running_x, running_y)
+                        }
+                    };
+                    ctx_fill("white");
+                    ctx_fill_circle(x, y, 1.0);
+                    if running_x != x || running_y != y {
+                        ctx_line_between(running_x, running_y, x, y);
+                    }
+                    running_x = x;
+                    running_y = y;
+                }
+            }
+
+            let dx = obj.x - self.inputs.mouse_x;
+            let dy = obj.y - self.inputs.mouse_y;
+
+            if dx * dx + dy * dy < 6.0 * 6.0 && obj.tp.user_movable() && obj.owner == self.id {
+                self.hovered = Some(obj.id);
+            }
+            if self.active_piece == Some(obj.id) {
+                ctx_stroke(2.0, "white");
+                ctx_outline_circle(running_x, running_y, 5.0);
+                let dx = self.inputs.mouse_x - running_x;
+                let dy = self.inputs.mouse_y - running_y;
+                if self.inputs.key("r") {
+                    let dura = (((dx * dx + dy * dy).sqrt() * 0.16) as u16).min(100);
+                    let node = PathNode::Rotation(dy.atan2(dx), dura);
+                    if let Some(PathNode::Rotation(r, dur)) = obj.path.get_last() {
+                        let ind = obj.path.len().unwrap() - 1;
+                        steal_mut(&obj.path).update_node(ind, node);
+                        send(ClientMessage::StrategySet { piece : obj.id, index : ind, node });
+                    }
+                    else {
+                        let ind = obj.path.endex().unwrap();
+                        steal_mut(&obj.path).insert_node(ind, node);
+                        send(ClientMessage::StrategyInsert { piece : obj.id, index : ind, node });
+                    }
+                }
+            }
         }
+        set_offset(self.off_x, self.off_y);
+        ctx_stroke(2.0, "white");
+        ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, 5.0);
     }
 
     pub fn set_mouse_pos(&mut self, x : f32, y : f32) {
@@ -282,7 +359,17 @@ impl State {
     pub fn mouse_down(&mut self) {
         self.inputs.mouse_down = true;
         if self.has_placed {
-            
+            if let Some(piece) = self.active_piece {
+                if let Some(mut piece) = self.object_data.get_mut(&piece) {
+                    if let Stage::MoveShips = self.stage {
+                        if let None = self.hovered { // if we aren't hovering anything new, create a path node
+                            piece.extend_path(PathNode::StraightTo(self.inputs.mouse_x, self.inputs.mouse_y));
+                            return; // we don't want to do anything else with this mouse click
+                        }
+                    }
+                }
+            }
+            self.active_piece = self.hovered;
         }
         else { // we don't have a castle yet! let's place that now, if possible
             // TODO: check territory stuff
@@ -308,38 +395,29 @@ impl State {
         if let Ok(ref msg) = message {
             if self.has_tested {
                 match msg {
-                    ServerMessage::Metadata(id, gb_w, gb_h, slot) => {
-                        self.gameboard_width = *gb_w;
-                        self.gameboard_height = *gb_h;
+                    ServerMessage::Metadata { id, board_width, board_height, slot } => {
+                        self.gameboard_width = *board_width;
+                        self.gameboard_height = *board_height;
                         self.id = *id;
                         self.slot = *slot;
-                        set_board_size(*gb_w, *gb_h);
+                        set_board_size(*board_width, *board_height);
                     },
-                    ServerMessage::GameState(byte, tick, stage_time) => {
-                        self.tick = *tick;
-                        self.time_in_stage = *stage_time;
-                        self.is_io = byte & 0b10000000 != 0;
-                        self.playing = byte & 0b01000000 != 0;
-                        self.strategy = byte & 0b00100000 != 0;
+                    ServerMessage::GameState { stage, stage_duration, tick_in_stage } => {
+                        self.tick = *tick_in_stage;
+                        self.stage_duration = *stage_duration;
+                        self.stage = *stage;
                         self.global_tick += 1;
-                        set_time(*tick, *stage_time, if self.playing {
-                            if self.strategy {
-                                "MOVE SHIPS"
-                            }
-                            else {
-                                "PLAYING"
-                            }
-                        } else { "WAITING" });
+                        set_time(*tick_in_stage, *stage_duration, stage.get_str());
                     },
-                    ServerMessage::PlayerData(id, banner, slot) => {
+                    ServerMessage::PlayerData { id, nickname, slot } => {
                         self.player_data.insert(*id, PlayerData {
                             id : *id,
-                            name : banner.clone(),
+                            name : nickname.clone(),
                             slot : *slot,
                             money : 0
                         });
                     },
-                    ServerMessage::Money(id, amount) => {
+                    ServerMessage::Money { id, amount } => {
                         if let Some(player) = self.player_data.get_mut(id) {
                             player.money = *amount;
                         }
@@ -348,40 +426,51 @@ impl State {
                             set_money(*amount);
                         }
                     },
-                    ServerMessage::Territory(id, radius) => {
+                    ServerMessage::Territory { id, radius } => {
                         self.territory_data.insert(*id, TerritoryData {
                             radius : *radius
                         });
                     },
-                    ServerMessage::Fabber(id, radius) => {
+                    ServerMessage::Fabber { id, radius } => {
                         self.fabber_data.insert(*id, FabberData {
                             radius : *radius
                         });
                     },
-                    ServerMessage::ObjectCreate(x, y, a, owner, id, tp) => {
+                    ServerMessage::ObjectCreate { x, y, a, owner, id, tp } => {
                         self.object_data.insert(*id, ObjectData {
                             x : *x,
                             y : *y,
                             a : *a,
                             owner : *owner,
                             id : *id,
-                            tp : PieceType::from_u16(*tp).unwrap(),
-                            health : 1.0
+                            tp : *tp,
+                            health : 1.0,
+                            path : PathFollower::start(*x, *y)
                         });
                     },
-                    ServerMessage::ObjectMove(id, x, y, a) => {
+                    ServerMessage::ObjectMove { id, x, y, a } => {
                         if let Some(obj) = self.object_data.get_mut(&id) {
                             obj.x = *x;
                             obj.y = *y;
                             obj.a = *a;
                         }
                     },
-                    ServerMessage::DeleteObject(id) => {
+                    ServerMessage::DeleteObject { id } => {
                         self.object_data.remove(&id);
                     },
-                    ServerMessage::Health(id, health) => {
+                    ServerMessage::Health { id, health } => {
                         if let Some(obj) = self.object_data.get_mut(&id) {
                             obj.health = *health;
+                        }
+                    },
+                    ServerMessage::StrategyCompletion { id, remaining } => {
+                        if let Some(mut obj) = self.object_data.get_mut(&id) {
+                            obj.path.bump().unwrap();
+                            if obj.path.len().unwrap() != *remaining {
+                                alert(&format!("error! mismatched strategy paths {} (local) vs {} (server)! attempting recovery", obj.path.len().unwrap(), *remaining));
+                                obj.path.clear();
+                                send(ClientMessage::StrategyClear { piece : *id });
+                            }
                         }
                     }
                     _ => {
@@ -393,7 +482,10 @@ impl State {
                 if let ServerMessage::Test(exostring, 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION) = msg {
                     if exostring == "EXOSPHERE" {
                         send(ClientMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION));
-                        send(ClientMessage::Connect(get_input_value("nickname"), "".to_string()));
+                        send(ClientMessage::Connect {
+                            nickname : get_input_value("nickname"),
+                            password : "".to_string()
+                        });
                         self.has_tested = true;
                         return;
                     }

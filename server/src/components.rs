@@ -22,6 +22,7 @@ use common::types::PieceType;
 use common::{ PieceId, PlayerId };
 use common::pathfollower::PathFollower;
 use crate::solve_spaceship::*;
+use std::f32::consts::PI;
 
 
 #[derive(Component)]
@@ -364,11 +365,30 @@ impl Ship {
 
 impl SpaceshipKinematics for Ship {
     fn to_position(&mut self, offset : Vec2, angle : f32, vel : Vec2, angvel : f32) -> KinematicResult {
-        KinematicResult::Noop
+        if offset.length() > 15.0 {
+            let mut thrust = if loopify(angle, offset.to_angle()).abs() < PI / 6.0 {
+                Vec2::from_angle(angle) * linear_maneuvre(offset, vel, self.speed * 10.0, self.speed * 10.0 * self.acc_profile)
+            }
+            else {
+                Vec2::ZERO
+            };
+            thrust -= vel.project_onto(offset.perp()) * 0.2; // linear deviation correction thrusters
+            let torque = (-loopify(offset.to_angle(), angle) * 10.0 - angvel * 2.0) * 40.0;
+            KinematicResult::Thrust(thrust, torque)
+        }
+        else {
+            KinematicResult::Done(vel * -0.1, 0.0)
+        }
     }
 
     fn to_angle(&mut self, offset : f32, vel : Vec2, angvel : f32) -> KinematicResult {
-        KinematicResult::Noop
+        let torque = (offset * 10.0 - angvel * 2.0) * 40.0;
+        if offset.abs() < 0.1 {
+            KinematicResult::Done(vel * -0.1, torque)
+        }
+        else {
+            KinematicResult::Thrust(vel * -0.1, torque)
+        }
     }
 }
 

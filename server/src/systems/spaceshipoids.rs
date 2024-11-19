@@ -24,7 +24,7 @@ pub fn move_spaceshipoids(mut shipoids : Query<(&mut ExternalImpulse, &Velocity,
             let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
             match match goal {
                 PathNode::StraightTo(x, y) => {
-                    let off = transform.translation.truncate() - Vec2::new(x, y);
+                    let off = Vec2::new(x, y) - transform.translation.truncate();
                     spaceship.kinematics.to_position(off, cangle, velocity.linvel, velocity.angvel)
                 },
                 PathNode::Target(thing) => {
@@ -33,10 +33,10 @@ pub fn move_spaceshipoids(mut shipoids : Query<(&mut ExternalImpulse, &Velocity,
                         spaceship.kinematics.to_position_tracking(off, cangle, velocity.linvel, velocity.angvel)
                     }
                     else {
-                        KinematicResult::Done
+                        KinematicResult::Done(Vec2::ZERO, 0.0)
                     }
                 },
-                PathNode::Rotation(ang) => {
+                PathNode::Rotation(ang, dur) => {
                     let off = loopify(cangle, ang);
                     spaceship.kinematics.to_angle(off, velocity.linvel, velocity.angvel)
                 }
@@ -45,17 +45,20 @@ pub fn move_spaceshipoids(mut shipoids : Query<(&mut ExternalImpulse, &Velocity,
                     impulse.impulse = imp / inv_mass;
                     impulse.torque_impulse = torque / inv_mass;
                 },
-                KinematicResult::Done => {
+                KinematicResult::Done(imp, torque) => {
+                    impulse.impulse = imp / inv_mass;
+                    impulse.torque_impulse = torque / inv_mass;
                     if is_override {
                         spaceship.kinematics.override_complete();
                     }
                     else {
-                        let _ = spaceship.pathfollower.bump();
-                        if let Some(client) = clients.get_mut(&piece.owner) {
-                            client.send(ServerMessage::StrategyCompletion {
-                                id : entity.into(),
-                                remaining: spaceship.pathfollower.len().unwrap() // unwrap should be safe here
-                            });
+                        if let Ok(true) = spaceship.pathfollower.bump() {
+                            if let Some(client) = clients.get_mut(&piece.owner) {
+                                client.send(ServerMessage::StrategyCompletion {
+                                    id : entity.into(),
+                                    remaining: spaceship.pathfollower.len().unwrap() // unwrap should be safe here
+                                });
+                            }
                         }
                     }
                 },

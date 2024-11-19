@@ -30,11 +30,10 @@ use common::PieceId;
 // you pass it will be [-1, 4]. bevy_rapier2d does not have this behavior, so some tuning may be required.
 // cap speed is not used naively: the algorithm assumes you want to travel at that speed most of the time. nominal_acceleration has the same behavior.
 // it DOES naively assume that the speed is never greater than cap_speed
-pub fn linear_maneuvre(current_position : Vec2, goal_position : Vec2, current_velocity : Vec2, cap_speed : f32, nominal_acceleration : f32) -> f32 {
+pub fn linear_maneuvre(delta : Vec2, current_velocity : Vec2, cap_speed : f32, nominal_acceleration : f32) -> f32 {
     let decel_time = current_velocity.length() / nominal_acceleration;
     let decel_dist = 0.5 * nominal_acceleration * decel_time * decel_time; // second integral of acceleration = position = p(t) = 1/2 * nominal_acceleration * t^2
     // t = decel_time
-    let delta = goal_position - current_position;
     /*if (delta - current_velocity).length() > delta.length() {
         return nominal_acceleration;
     }
@@ -99,7 +98,8 @@ pub fn space_gyro(current_position : f32, goal_position : f32, current_rotationa
 pub enum KinematicResult {
     Thrust(Vec2, f32), // apply impulses
     Noop, // we don't want to do anything
-    Done // calculated offsets and velocities are in target range, next question!
+    Done(Vec2, f32) // calculated offsets and velocities are in target range, next question!
+    // (allows the spaceshipoid to continue providing thrust data, if it wants to airbrake or something)
 }
 
 

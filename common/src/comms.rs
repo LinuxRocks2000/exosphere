@@ -34,7 +34,6 @@ pub enum ClientMessage { // client -> server
     StrategySet { piece : PieceId, index : u16, node : PathNode },
     StrategyDelete { piece : PieceId, index : u16 },
     StrategyClear { piece : PieceId },
-    StrategyEndcapSet { piece : PieceId, endcap : Option<PathNode> },
     GunState { piece : PieceId, enabled : bool } // change the state of a gun.
 }
 
@@ -50,6 +49,17 @@ pub enum Stage {
     Playing,
     Waiting,
     MoveShips
+}
+
+
+impl Stage {
+    pub fn get_str(self) -> &'static str {
+        match self {
+            Self::Playing => "PLAYING",
+            Self::Waiting => "WAITING",
+            Self::MoveShips => "MOVE SHIPS"
+        }
+    }
 }
 
 

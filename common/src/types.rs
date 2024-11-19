@@ -129,6 +129,16 @@ impl PieceType {
         }
     }
 
+    pub fn user_movable(&self) -> bool {
+        match self {
+            Self::BasicFighter | Self::TieFighter | Self::Sniper | Self::CruiseMissile |
+            Self::DemolitionCruiser | Self::Battleship | Self::Seed | Self::TrackingMissile |
+            Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile | Self::HypersonicMissile |
+            Self::FleetDefenseShip => true, // if you want a type to be movable, just add it to this lil' blob.
+            _ => false
+        }
+    }
+
     pub fn fabber(&self) -> FabLevels {
         match self {
             Self::BasicFighter => FabLevels::ships(1),

@@ -181,20 +181,6 @@ pub fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePie
                                         }
                                     }
                                 },
-                                ClientMessage::StrategyEndcapSet { piece : piece_id, endcap } => {
-                                    if state.playing && state.strategy {
-                                        if let Ok((_, piece, shipoid, _, _)) = pieces.get_mut(piece_id.into()) {
-                                            if let Some(mut shipoid) = shipoid {
-                                                if piece.owner == id {
-                                                    shipoid.pathfollower.set_endcap(endcap);
-                                                }
-                                            }
-                                            else {
-                                                println!("whoops");
-                                            }
-                                        }
-                                    }
-                                },
                                 ClientMessage::GunState { piece : piece_id, enabled } => {
                                     if state.playing && state.strategy {
                                         if let Ok((_, piece, _, _, _)) = pieces.get_mut(piece_id.into()) {
