@@ -163,6 +163,7 @@ impl PieceType {
             Self::Castle => Asset::Partisan("castle_friendly.svg", "castle_enemy.svg"),
             Self::Bullet => Asset::Simple("bullet.svg"),
             Self::TieFighter => Asset::Partisan("tie_fighter_friendly.svg", "tie_fighter_enemy.svg"),
+            Self::Sniper => Asset::Partisan("sniper_friendly.svg", "sniper_enemy.svg"),
             _ => Asset::Unimpl
         }
     }
@@ -173,6 +174,7 @@ impl PieceType {
             Self::Bullet => Shape::Box(5.0, 5.0),
             Self::Castle => Shape::Box(60.0, 60.0),
             Self::TieFighter => Shape::Box(40.0, 50.0),
+            Self::Sniper => Shape::Box(60.0, 30.0),
             _ => Shape::Unimpl
         }
     }

@@ -10,3 +10,4 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = "*"
 common = { version = "*", path="../common" }
 num-traits = "*"
+console_error_panic_hook = "0.1.7"

@@ -109,7 +109,7 @@ struct ObjectData {
 }
 
 
-impl ObjectData {
+impl ObjectData { // TODO: make the path functions not spam the server with path updates (some kind of update-cache, mayhaps?)
     fn path_iter<'a>(&'a self) -> PathIter<'a> {
         self.path.iter()
     }
@@ -122,6 +122,29 @@ impl ObjectData {
             index : endex,
             node
         });
+    }
+
+    fn path_insert(&mut self, before : u16, node : PathNode) {
+        self.path.insert_node(before, node);
+        send(ClientMessage::StrategyInsert {
+            piece : self.id,
+            index : before,
+            node
+        });
+    }
+
+    fn update_strategy(&mut self, index : u16, node : PathNode) {
+        self.path.update_node(index, node);
+        send(ClientMessage::StrategySet {
+            piece : self.id,
+            index,
+            node
+        });
+    }
+
+    fn delete_strategy(&mut self, index : u16) {
+        self.path.remove_node(index);
+        send(ClientMessage::StrategyDelete { piece : self.id, index });
     }
 }
 
@@ -151,7 +174,8 @@ struct State {
     territory_buf : Vec<f32>,
     fabber_buf : Vec<f32>,
     active_piece : Option<PieceId>,
-    hovered : Option<PieceId>
+    hovered : Option<PieceId>,
+    updating_node : Option<(PieceId, u16)>
 }
 
 
@@ -211,7 +235,8 @@ impl State {
 #[wasm_bindgen]
 impl State {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    pub fn new() -> Self { // state creation is the first thing that happens and will never happen again, so it's a good point to do entry routines (like setting the panic hook)
+        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
         Self {
             gameboard_height : 0.0,
             gameboard_width : 0.0,
@@ -241,7 +266,8 @@ impl State {
             territory_buf : vec![],
             fabber_buf : vec![],
             active_piece : None,
-            hovered : None
+            hovered : None,
+            updating_node : None
         }
     }
 
@@ -330,18 +356,20 @@ impl State {
                 ctx_outline_circle(running_x, running_y, 5.0);
                 let dx = self.inputs.mouse_x - running_x;
                 let dy = self.inputs.mouse_y - running_y;
-                if self.inputs.key("r") {
-                    let dura = (((dx * dx + dy * dy).sqrt() * 0.16) as u16).min(100);
-                    let node = PathNode::Rotation(dy.atan2(dx), dura);
-                    if let Some(PathNode::Rotation(r, dur)) = obj.path.get_last() {
-                        let ind = obj.path.len().unwrap() - 1;
-                        steal_mut(&obj.path).update_node(ind, node);
-                        send(ClientMessage::StrategySet { piece : obj.id, index : ind, node });
-                    }
-                    else {
-                        let ind = obj.path.endex().unwrap();
-                        steal_mut(&obj.path).insert_node(ind, node);
-                        send(ClientMessage::StrategyInsert { piece : obj.id, index : ind, node });
+            }
+            if self.inputs.key("r") {
+                if let None = self.updating_node {
+                    if self.active_piece == Some(obj.id) {
+                        let dura = (((dx * dx + dy * dy).sqrt() * 0.16) as u16).min(100);
+                        let node = PathNode::Rotation(dy.atan2(dx), dura);
+                        if let Some(PathNode::Rotation(r, dur)) = obj.path.get_last() {
+                            let ind = obj.path.len().unwrap() - 1;
+                            steal_mut(&obj.path).update_node(ind, node);
+                            send(ClientMessage::StrategySet { piece : obj.id, index : ind, node });
+                        }
+                        else {
+                            steal_mut(obj).extend_path(node);
+                        }
                     }
                 }
             }
@@ -349,6 +377,52 @@ impl State {
         set_offset(self.off_x, self.off_y);
         ctx_stroke(2.0, "white");
         ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, 5.0);
+        if self.stage == Stage::MoveShips {
+            if let Some((id, index)) = self.updating_node {
+                if self.inputs.key("r") {
+                    if let Some(piece) = self.object_data.get(&id) {
+                        let (x, y) = match piece.path.get(index as usize).unwrap() {
+                            PathNode::StraightTo(x, y) => (x, y),
+                            PathNode::Target(piece) => {
+                                if let Some(piece) = self.object_data.get(&piece) {
+                                    (piece.x, piece.y)
+                                }
+                                else {
+                                    return;
+                                }
+                            },
+                            PathNode::Rotation(_, _) => unreachable!()
+                        };
+                        let dx = self.inputs.mouse_x - x;
+                        let dy = self.inputs.mouse_y - y;
+                        let dura = (((dx * dx + dy * dy).sqrt() * 0.16) as u16).min(100);
+                        let node = PathNode::Rotation(dy.atan2(dx), dura);
+                        if let Some(PathNode::Rotation(_, _)) = piece.path.get(index as usize + 1) { // if there's already a rotation in this path
+                            steal_mut(piece).update_strategy(index + 1, PathNode::Rotation(dy.atan2(dx), dura));
+                        }
+                        else {
+                            steal_mut(piece).path_insert(index + 1, node);
+                        }
+                    }
+                }
+                else if self.inputs.key("d") {
+                    if let Some(mut piece) = self.object_data.get_mut(&id) {
+                        if let Some(PathNode::Rotation(_, _)) = piece.path.get(index as usize + 1) {
+                            piece.delete_strategy(index + 1);
+                        }
+                        else {
+                            piece.delete_strategy(index);
+                        }
+                        self.updating_node = None;
+                    }
+                }
+                else {
+                    if let Some(mut piece) = self.object_data.get_mut(&id) {
+                        piece.update_strategy(index, PathNode::StraightTo(self.inputs.mouse_x, self.inputs.mouse_y));
+                    }
+                }
+            }
+        }
     }
 
     pub fn set_mouse_pos(&mut self, x : f32, y : f32) {
@@ -359,17 +433,94 @@ impl State {
     pub fn mouse_down(&mut self) {
         self.inputs.mouse_down = true;
         if self.has_placed {
-            if let Some(piece) = self.active_piece {
-                if let Some(mut piece) = self.object_data.get_mut(&piece) {
-                    if let Stage::MoveShips = self.stage {
-                        if let None = self.hovered { // if we aren't hovering anything new, create a path node
+            if let Stage::MoveShips = self.stage {
+                if let None = self.hovered { // if we aren't hovering anything new, create a path node
+                    // first up: check if this click might extend a pre-existing path
+                    let mx = self.inputs.mouse_x;
+                    let my = self.inputs.mouse_y;
+                    let mut nearest_node = None;
+                    let mut nearest_obj = PieceId::ZERO;
+                    let mut nearest_node_dist = 0.0;
+                    let mut nearest_pair : (f32, f32) = (0.0, 0.0);
+                    let mut is_move = false; // are we going to place a new path node at a projection on the segment? or are we going to move (or otherwise update) a node?
+                    'outer : for obj in self.object_data.values() {
+                        let mut running_x = obj.x;
+                        let mut running_y = obj.y;
+                        for i in 0..obj.path.len().unwrap() {
+                            let node = obj.path.get(i as usize).unwrap();
+                            let (x, y) = match node {
+                                PathNode::StraightTo(x, y) => {
+                                    (x, y)
+                                },
+                                PathNode::Target(piece) => {
+                                    if let Some(piece) = self.object_data.get(&piece) {
+                                        (piece.x, piece.y)
+                                    }
+                                    else {
+                                        (running_x, running_y)
+                                    }
+                                },
+                                PathNode::Rotation(a, _) => {
+                                    ctx_draw_image("rotation_arrow.svg", running_x, running_y, a, 30.0, 30.0);
+                                    (running_x, running_y)
+                                }
+                            };
+                            let d_x = x - mx;
+                            let d_y = y - my;
+                            if d_x * d_x + d_y * d_y < 5.0 * 5.0 {
+                                is_move = true;
+                                nearest_node = Some(i);
+                                nearest_obj = obj.id;
+                                break 'outer;
+                            }
+                            if running_x != x || running_y != y {
+                                let v_x = x - running_x;
+                                let v_y = y - running_y;
+                                let u_x = running_x - mx;
+                                let u_y = running_y - my;
+                                let t = (-1.0 * (v_x * u_x + v_y * u_y) / (v_x * v_x + v_y * v_y)).min(1.0).max(0.0);
+                                let p_x = running_x * (1.0 - t) + x * t;
+                                let p_y = running_y * (1.0 - t) + y * t;
+                                let dx = p_x - mx;
+                                let dy = p_y - my;
+                                let d = dx * dx + dy * dy;
+                                if let None = nearest_node {
+                                    nearest_pair = (p_x, p_y);
+                                    nearest_node_dist = d;
+                                    nearest_obj = obj.id;
+                                    nearest_node = Some(i);
+                                }
+                                else if d < nearest_node_dist {
+                                    nearest_node = Some(i);
+                                    nearest_pair = (p_x, p_y);
+                                    nearest_obj = obj.id;
+                                    nearest_node_dist = d;
+                                }
+                            }
+                            running_x = x;
+                            running_y = y;
+                        }
+                    }
+                    if is_move {
+                        self.updating_node = Some((nearest_obj, nearest_node.unwrap()));
+                    }
+                    else if let Some(piece) = self.active_piece {
+                        if let Some(mut piece) = self.object_data.get_mut(&piece) {
                             piece.extend_path(PathNode::StraightTo(self.inputs.mouse_x, self.inputs.mouse_y));
-                            return; // we don't want to do anything else with this mouse click
+                        }
+                    }
+                    else if let Some(nearest_node) = nearest_node {
+                        if nearest_node_dist < 5.0 * 5.0 {
+                            if let Some(mut piece) = self.object_data.get_mut(&nearest_obj) {
+                                piece.path_insert(nearest_node, PathNode::StraightTo(nearest_pair.0, nearest_pair.1));
+                            }
                         }
                     }
                 }
+                else {
+                    self.active_piece = self.hovered;
+                }
             }
-            self.active_piece = self.hovered;
         }
         else { // we don't have a castle yet! let's place that now, if possible
             // TODO: check territory stuff
@@ -380,6 +531,7 @@ impl State {
 
     pub fn mouse_up(&mut self) {
         self.inputs.mouse_down = true;
+        self.updating_node = None;
     }
 
     pub fn key_down(&mut self, key : String) {
@@ -387,6 +539,9 @@ impl State {
     }
 
     pub fn key_up(&mut self, key : String) {
+        if key == "Escape" {
+            self.active_piece = None;
+        }
         self.inputs.keys_down.insert(key, false);
     }
 
