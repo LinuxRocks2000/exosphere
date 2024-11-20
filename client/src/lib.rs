@@ -20,6 +20,13 @@ use common::pathfollower::{ PathFollower, PathIter, PathNode };
 use common::protocol::{ ProtocolSerialize, ProtocolDeserialize };
 use common::{ PieceId, PlayerId };
 use common::steal_mut;
+use num_traits::cast::FromPrimitive;
+
+
+const PLACE_MENU : [&'static [PieceType]; 2] = [
+    &[PieceType::BasicFighter, PieceType::TieFighter, PieceType::Sniper], // ships
+    &[PieceType::BallisticMissile]
+];
 
 
 #[derive(Debug)]
@@ -53,6 +60,9 @@ extern "C" {
     fn render_background(fabbers_buf : &mut [f32], fabbers_count : usize, territories_buf : &mut [f32], territory_count : usize);
     fn ctx_draw_image(resource : &str, x : f32, y : f32, a : f32, w : f32, h : f32); // draw an image at a given position and angle
     fn ctx_line_between(x1 : f32, y1 : f32, x2 : f32, y2 : f32);
+    fn setup_placemenu_row(index : usize);
+    fn add_placemenu_item(row : usize, item : u16, img : &str);
+    fn clear_piecepicker();
 }
 
 
@@ -175,7 +185,8 @@ struct State {
     fabber_buf : Vec<f32>,
     active_piece : Option<PieceId>,
     hovered : Option<PieceId>,
-    updating_node : Option<(PieceId, u16)>
+    updating_node : Option<(PieceId, u16)>,
+    piecepicker : Option<PieceType>
 }
 
 
@@ -237,6 +248,12 @@ impl State {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self { // state creation is the first thing that happens and will never happen again, so it's a good point to do entry routines (like setting the panic hook)
         std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+        for row in 0..PLACE_MENU.len() {
+            setup_placemenu_row(row);
+            for item in PLACE_MENU[row] {
+                add_placemenu_item(row, *item as u16, item.asset().to_friendly());
+            }
+        }
         Self {
             gameboard_height : 0.0,
             gameboard_width : 0.0,
@@ -267,7 +284,8 @@ impl State {
             fabber_buf : vec![],
             active_piece : None,
             hovered : None,
-            updating_node : None
+            updating_node : None,
+            piecepicker : None
         }
     }
 
@@ -299,17 +317,12 @@ impl State {
         self.overlay();
         self.hovered = None;
         for obj in self.object_data.values() {
-            let resource = match obj.tp.asset() {
-                Asset::Simple(uri) => uri,
-                Asset::Partisan(friendly, enemy) => {
-                    if self.is_friendly(obj.owner) {
-                        friendly
-                    }
-                    else {
-                        enemy
-                    }
-                },
-                Asset::Unimpl => "notfound.svg"
+            let asset = obj.tp.asset();
+            let resource = if self.is_friendly(obj.owner) {
+                asset.to_friendly()
+            }
+            else {
+                asset.to_enemy()
             };
             let wh = obj.tp.shape().to_bbox();
             ctx_draw_image(resource, obj.x, obj.y, obj.a, wh.0, wh.1);
@@ -434,7 +447,14 @@ impl State {
         self.inputs.mouse_down = true;
         if self.has_placed {
             if let Stage::MoveShips = self.stage {
-                if let None = self.hovered { // if we aren't hovering anything new, create a path node
+                if let Some(piece) = self.piecepicker {
+                    if self.money >= piece.price() {
+                        self.place(piece);
+                        self.piecepicker = None;
+                        clear_piecepicker();
+                    }
+                }
+                else if let None = self.hovered { // if we aren't hovering anything new, create a path node
                     // first up: check if this click might extend a pre-existing path
                     let mx = self.inputs.mouse_x;
                     let my = self.inputs.mouse_y;
@@ -543,6 +563,14 @@ impl State {
             self.active_piece = None;
         }
         self.inputs.keys_down.insert(key, false);
+    }
+
+    pub fn piece_picked(&mut self, pick : u16) {
+        self.piecepicker = PieceType::from_u16(pick);
+    }
+
+    pub fn piece_unpicked(&mut self) {
+        self.piecepicker = None;
     }
 
     pub fn on_message(&mut self, message : Vec<u8>) {

@@ -105,3 +105,42 @@ export function ctx_line_between(x1, y1, x2, y2) {
 export function set_money(m) {
     document.getElementById("money").innerText = m;
 }
+
+export function setup_placemenu_row(index) {
+    let el = document.createElement("div");
+    el.dataIndex = index;
+    el.id = "placerow_" + index;
+    document.getElementById("buyshipmenu").appendChild(el);
+}
+
+export function add_placemenu_item(row, id, asset) {
+    let el = document.createElement("div");
+    let inp = document.createElement("input");
+    inp.class = "picker_radio";
+    inp.type = "radio";
+    inp.name = "picker_" + row;
+    let domID = "picker_" + row + "_" + id;
+    inp.id = domID;
+    el.appendChild(inp);
+    let label = document.createElement("label");
+    label.setAttribute("for", domID);
+    el.appendChild(label);
+    let img = document.createElement("img");
+    img.src = "res/" + asset;
+    label.appendChild(img);
+    document.getElementById("placerow_" + row).appendChild(el);
+    inp.addEventListener("change", () => {
+        if (inp.checked) {
+            window.exosphere.state.piece_picked(id);
+        }
+        else {
+            window.exosphere.state.piece_unpicked();
+        }
+    });
+}
+
+export function clear_piecepicker() {
+    for (el of document.getElementsByClassName("picker_radio")) {
+        el.checked = false;
+    }
+}

@@ -75,6 +75,26 @@ pub enum Asset { // drawing assets, specifically for client side
 }
 
 
+impl Asset {
+    pub const NOT_FOUND : &'static str = "notfound.svg";
+    pub fn to_friendly(&self) -> &'static str {
+        match self {
+            Self::Simple(img) => img,
+            Self::Partisan(friendly, _) => friendly,
+            Self::Unimpl => Asset::NOT_FOUND
+        }
+    }
+
+    pub fn to_enemy(&self) -> &'static str {
+        match self {
+            Self::Simple(img) => img,
+            Self::Partisan(_, enemy) => enemy,
+            Self::Unimpl => Asset::NOT_FOUND
+        }
+    }
+}
+
+
 pub enum Shape {
     Box(f32, f32), // width, height
     Unimpl // no shape data for this asset
