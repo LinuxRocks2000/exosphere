@@ -17,6 +17,7 @@ use bevy::prelude::Entity;
 use common::types::PieceType;
 use common::PlayerId;
 use crate::components::ExplosionProperties;
+use bevy::prelude::Vec2;
 
 
 #[derive(Event)]
@@ -56,4 +57,15 @@ pub(crate) struct ExplosionEvent { // an explosion was initiated!
 pub(crate) struct PieceDestroyedEvent {
     pub(crate) piece : Entity,
     pub(crate) responsible : PlayerId // the client responsible for this destruction (== the owner of the piece that did fatal damage)
+}
+
+
+#[derive(Event)]
+pub(crate) struct LaserCastEvent {
+    pub(crate) caster : Entity,
+    pub(crate) from : Vec2,
+    pub(crate) dir : Vec2,
+    pub(crate) max_dist : f32,
+    pub(crate) dmg : f32,
+    pub(crate) exclusive : Option<Entity> // if there's an exclusive target set, the laser will not be cast unless doing so would damage the target
 }

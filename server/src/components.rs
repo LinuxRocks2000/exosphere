@@ -14,15 +14,18 @@
 
 use bevy::prelude::Component;
 use bevy::prelude::Entity;
+use bevy::prelude::Query;
 use crate::Bullets;
 use bevy::prelude::Vec2;
 use bevy::ecs::system::SystemId;
 use common::fab::FabLevels;
-use common::types::PieceType;
+use common::types::*;
 use common::{ PieceId, PlayerId };
 use common::pathfollower::PathFollower;
 use crate::solve_spaceship::*;
 use std::f32::consts::PI;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 
 #[derive(Component)]
@@ -244,13 +247,15 @@ pub(crate) struct Farmhouse {
 
 #[derive(Component)]
 pub(crate) struct FieldSensor {
-    pub(crate) attached_to : Entity
+    pub(crate) attached_to : Entity,
+    pub(crate) radius : f32
 }
 
 impl FieldSensor {
-    pub(crate) fn farmhouse(piece : Entity) -> Self {
+    pub(crate) fn new(piece : Entity, radius : f32) -> Self {
         Self {
-            attached_to : piece
+            attached_to : piece,
+            radius
         }
     }
 }
@@ -421,5 +426,82 @@ impl Spaceshipoid {
 
     pub fn sensor_tripped(&mut self, thing : PieceId) {
         self.kinematics.sensor_tripped(thing);
+    }
+}
+
+
+#[derive(Component)]
+pub struct LaserNode {
+    pub slots : Arc<RwLock<Vec<Entity>>>, // every laser node within range
+    pub allowable : usize // the maximum number of connections it can act on
+}
+
+
+impl LaserNode {
+    pub fn new(slots : usize) -> Self {
+        Self {
+            slots : Arc::new(RwLock::new(Vec::new())),
+            allowable : slots
+        }
+    }
+
+    pub fn disconnect(&self, thing : Entity) {
+        if let Some(index) = self.slots.read().unwrap().iter().position(|x| *x == thing) {
+            self.slots.write().unwrap().remove(index);
+        }
+    }
+    
+    pub fn connect(&self, thing : Entity) {
+        for slot in self.slots.read().unwrap().iter() { // don't duplicate connections
+            if *slot == thing {
+                return;
+            }
+        }
+        self.slots.write().unwrap().push(thing);
+    }
+
+    pub fn recalculate(&self, all_nodes : &Query<&LaserNode>) {
+        // only the top `allowable` connections will be actually serviced, so we need to sort `slots` to make it as even as possible
+        // we sort by the number of nodes connected to the node in consideration.
+        self.slots.write().unwrap().sort_by(|a, b| {
+            if let Ok(a) = all_nodes.get(*a) {
+                if let Ok(b) = all_nodes.get(*b) {
+                    return a.slots.read().unwrap().len().cmp(&b.slots.read().unwrap().len());
+                }
+            }
+            std::cmp::Ordering::Equal
+        });
+    }
+}
+
+
+#[derive(Component)]
+pub struct ScrapShip {
+    pub seeds_in_range : Vec<Entity>,
+    pub ind : usize
+}
+
+
+impl ScrapShip {
+    pub fn new() -> Self {
+        Self {
+            seeds_in_range : vec![],
+            ind : 0
+        }
+    }
+
+    pub fn enter(&mut self, e : Entity) {
+        for seed in self.seeds_in_range.iter() { // don't duplicate
+            if *seed == e {
+                return;
+            }
+        }
+        self.seeds_in_range.push(e);
+    }
+
+    pub fn leave(&mut self, e : Entity) {
+        if let Some(index) = self.seeds_in_range.iter().position(|x| *x == e) {
+            self.seeds_in_range.remove(index);
+        }
     }
 }

@@ -68,10 +68,10 @@ function setup(state) {
             window.exosphere.board.rawMx = evt.clientX;
             window.exosphere.board.rawMy = evt.clientY;
         });
-        window.addEventListener("pointerup", () => {
+        window.exosphere.addEventListener("pointerup", () => {
             window.exosphere.state.mouse_up();
         });
-        window.addEventListener("pointerdown", () => {
+        window.exosphere.addEventListener("pointerdown", () => {
             window.exosphere.state.mouse_down();
         });
     };

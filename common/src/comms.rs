@@ -86,4 +86,5 @@ pub enum ServerMessage { // server -> client
     // in the future we may want to be able to see the money of our allies, so the id tag could be useful
     Explosion { x : f32, y : f32, radius : f32, damage : f32}, // an explosion happened! the client should render it for one frame and then kill it
     Health { id : PieceId, health : f32 }, // tell a player about the current health of one of its pieces
+    LaserCast { caster : PieceId, from_x : f32, from_y : f32, to_x : f32, to_y : f32 }
 }

@@ -48,23 +48,31 @@ use serde_derive::{ Serialize, Deserialize };
 #[repr(u16)]
 #[derive(Copy, Clone, Debug, PartialEq, FromPrimitive, Serialize, Deserialize)]
 pub enum PieceType {
-    BasicFighter = 0,
-    Castle = 1,
-    Bullet = 2,
-    TieFighter = 3,
-    Sniper = 4,
-    DemolitionCruiser = 5,
-    Battleship = 6,
-    SmallBomb = 7,
-    Seed = 8,
-    Chest = 9,
-    Farmhouse = 10,
-    BallisticMissile = 11,
-    FleetDefenseShip = 12,
-    SeekingMissile = 13,
-    HypersonicMissile = 14,
-    TrackingMissile = 15,
-    CruiseMissile = 16
+    BasicFighter,
+    Castle,
+    Bullet,
+    TieFighter,
+    Sniper,
+    DemolitionCruiser,
+    Battleship,
+    SmallBomb,
+    Seed,
+    Chest,
+    Farmhouse,
+    BallisticMissile,
+    FleetDefenseShip,
+    SeekingMissile,
+    HypersonicMissile,
+    TrackingMissile,
+    CruiseMissile,
+    ScrapShip,
+    LaserNode,
+    BasicTurret,
+    LaserNodeLR,
+    SmartTurret,
+    BlastTurret,
+    LaserTurret,
+    EmpZone
 }
 
 
@@ -119,6 +127,13 @@ impl Shape {
 }
 
 
+pub enum SensorType { // what sort of things will trip this sensor?
+    All,
+    Some(&'static [PieceType]),
+    One(PieceType)
+}
+
+
 impl PieceType {
     pub fn price(&self) -> u32 {
         match self {
@@ -135,6 +150,8 @@ impl PieceType {
             Self::HypersonicMissile => 20,
             Self::TrackingMissile => 30,
             Self::CruiseMissile => 50,
+            Self::LaserNode => 10,
+            Self::ScrapShip => 20,
             _ => 0
         }
     }
@@ -144,7 +161,7 @@ impl PieceType {
             Self::BasicFighter | Self::TieFighter | Self::Sniper | Self::CruiseMissile |
             Self::DemolitionCruiser | Self::Battleship | Self::Seed | Self::TrackingMissile |
             Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile | Self::HypersonicMissile |
-            Self::FleetDefenseShip => true, // if you want a type to be user placeable, just add it to this lil' blob.
+            Self::ScrapShip | Self::LaserNode | Self::FleetDefenseShip => true, // if you want a type to be user placeable, just add it to this lil' blob.
             _ => false
         }
     }
@@ -153,8 +170,8 @@ impl PieceType {
         match self {
             Self::BasicFighter | Self::TieFighter | Self::Sniper | Self::CruiseMissile |
             Self::DemolitionCruiser | Self::Battleship | Self::Seed | Self::TrackingMissile |
-            Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile | Self::HypersonicMissile |
-            Self::FleetDefenseShip => true, // if you want a type to be movable, just add it to this lil' blob.
+            Self::BallisticMissile | Self::SeekingMissile | Self::HypersonicMissile |
+            Self::ScrapShip | Self::FleetDefenseShip => true, // if you want a type to be movable, just add it to this lil' blob.
             _ => false
         }
     }
@@ -173,6 +190,8 @@ impl PieceType {
             Self::HypersonicMissile => FabLevels::missiles(2),
             Self::TrackingMissile => FabLevels::missiles(3),
             Self::CruiseMissile => FabLevels::missiles(4),
+            Self::LaserNode => FabLevels::defense(1),
+            Self::ScrapShip => FabLevels::econ(2),
             _ => FabLevels::default()
         }
     }
@@ -184,6 +203,20 @@ impl PieceType {
             Self::Bullet => Asset::Simple("bullet.svg"),
             Self::TieFighter => Asset::Partisan("tie_fighter_friendly.svg", "tie_fighter_enemy.svg"),
             Self::Sniper => Asset::Partisan("sniper_friendly.svg", "sniper_enemy.svg"),
+            Self::DemolitionCruiser => Asset::Partisan("demolition_cruiser_friendly.svg", "demolition_cruiser_enemy.svg"),
+            Self::Battleship => Asset::Partisan("battleship_friendly.svg", "battleship_enemy.svg"),
+            Self::SmallBomb => Asset::Simple("smallbomb.svg"),
+            Self::Seed => Asset::Simple("seed.svg"),
+            Self::Chest => Asset::Simple("chest.svg"),
+            Self::Farmhouse => Asset::Simple("farmhouse.svg"),
+            Self::BallisticMissile => Asset::Partisan("ballistic_missile_friendly.svg", "ballistic_missile_enemy.svg"),
+            Self::FleetDefenseShip => Asset::Unimpl,
+            Self::SeekingMissile => Asset::Partisan("seeking_missile_friendly.svg", "seeking_missile_enemy.svg"),
+            Self::HypersonicMissile => Asset::Partisan("hypersonic_missile_friendly.svg", "hypersonic_missile_enemy.svg"),
+            Self::TrackingMissile => Asset::Partisan("tracking_missile_friendly.svg", "tracking_missile_enemy.svg"),
+            Self::CruiseMissile => Asset::Partisan("cruise_missile_friendly.svg", "cruise_missile_enemy.svg"),
+            Self::LaserNode => Asset::Simple("lasernode.svg"),
+            Self::ScrapShip => Asset::Simple("scrapship.svg"),
             _ => Asset::Unimpl
         }
     }
@@ -195,7 +228,45 @@ impl PieceType {
             Self::Castle => Shape::Box(60.0, 60.0),
             Self::TieFighter => Shape::Box(40.0, 50.0),
             Self::Sniper => Shape::Box(60.0, 30.0),
+            Self::DemolitionCruiser => Shape::Box(40.0, 40.0),
+            Self::Battleship => Shape::Box(150.0, 200.0),
+            Self::SmallBomb => Shape::Box(10.0, 10.0),
+            Self::Seed => Shape::Box(7.0, 7.0),
+            Self::Chest => Shape::Box(20.0, 20.0),
+            Self::Farmhouse => Shape::Box(50.0, 50.0),
+            Self::BallisticMissile => Shape::Box(35.0, 20.0),
+            Self::FleetDefenseShip => Shape::Unimpl,
+            Self::SeekingMissile => Shape::Box(35.0, 20.0),
+            Self::HypersonicMissile => Shape::Box(35.0, 10.0),
+            Self::TrackingMissile => Shape::Box(35.0, 17.0),
+            Self::CruiseMissile => Shape::Box(35.0, 10.0),
+            Self::LaserNode => Shape::Box(15.0, 15.0),
+            Self::ScrapShip => Shape::Box(50.0, 50.0),
             _ => Shape::Unimpl
+        }
+    }
+
+    pub fn sensor(&self) -> Option<f32> {
+        match self {
+            Self::Farmhouse => Some(100.0),
+            Self::SeekingMissile => Some(300.0),
+            Self::LaserNode => Some(200.0),
+            Self::ScrapShip => Some(300.0),
+            _ => None
+        }
+    }
+
+    pub fn field(&self) -> Option<f32> { // specifically for the client; returns the radius of the field to draw around this piece
+        if let Some(sensor) = self.sensor() {
+            return Some(sensor);
+        }
+        None
+    }
+
+    pub fn show_field(&self) -> bool { // should the field for this piece be visible at all times?
+        match self {
+            Self::Farmhouse => true, // some types have overrides for fields drawn on GPU, this is just the ones drawn on CPU
+            _ => false
         }
     }
 }

@@ -23,9 +23,11 @@ use common::steal_mut;
 use num_traits::cast::FromPrimitive;
 
 
-const PLACE_MENU : [&'static [PieceType]; 2] = [
-    &[PieceType::BasicFighter, PieceType::TieFighter, PieceType::Sniper], // ships
-    &[PieceType::BallisticMissile]
+const PLACE_MENU : [&'static [PieceType]; 4] = [
+    &[PieceType::BallisticMissile, PieceType::SeekingMissile, PieceType::HypersonicMissile, PieceType::TrackingMissile, PieceType::CruiseMissile], // missiles
+    &[PieceType::BasicFighter, PieceType::TieFighter, PieceType::Sniper, PieceType::FleetDefenseShip, PieceType::DemolitionCruiser, PieceType::Battleship], // ships
+    &[PieceType::Seed, PieceType::Farmhouse, PieceType::ScrapShip], // economic
+    &[PieceType::LaserNode, PieceType::BasicTurret, PieceType::LaserNodeLR, PieceType::SmartTurret, PieceType::BlastTurret, PieceType::LaserTurret, PieceType::EmpZone] // defense
 ];
 
 
@@ -63,6 +65,7 @@ extern "C" {
     fn setup_placemenu_row(index : usize);
     fn add_placemenu_item(row : usize, item : u16, img : &str);
     fn clear_piecepicker();
+    fn ctx_alpha(alpha : f32);
 }
 
 
@@ -186,7 +189,8 @@ struct State {
     active_piece : Option<PieceId>,
     hovered : Option<PieceId>,
     updating_node : Option<(PieceId, u16)>,
-    piecepicker : Option<PieceType>
+    piecepicker : Option<PieceType>,
+    lasers : Vec<Laser>
 }
 
 
@@ -243,6 +247,16 @@ impl State {
     }
 }
 
+
+struct Laser {
+    age : u8,
+    from_x : f32,
+    from_y : f32,
+    to_x : f32,
+    to_y : f32
+}
+
+
 #[wasm_bindgen]
 impl State {
     #[wasm_bindgen(constructor)]
@@ -285,7 +299,8 @@ impl State {
             active_piece : None,
             hovered : None,
             updating_node : None,
-            piecepicker : None
+            piecepicker : None,
+            lasers : vec![]
         }
     }
 
@@ -386,10 +401,14 @@ impl State {
                     }
                 }
             }
+            if obj.tp.show_field() {
+                if let Some(field) = obj.tp.field() {
+                    ctx_stroke(1.0, "white");
+                    ctx_outline_circle(obj.x, obj.y, field);
+                }
+            }
         }
         set_offset(self.off_x, self.off_y);
-        ctx_stroke(2.0, "white");
-        ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, 5.0);
         if self.stage == Stage::MoveShips {
             if let Some((id, index)) = self.updating_node {
                 if self.inputs.key("r") {
@@ -436,6 +455,26 @@ impl State {
                 }
             }
         }
+        ctx_stroke(2.0, "red");
+        self.lasers.retain_mut(|laser : &mut Laser| {
+            laser.age -= 1;
+            ctx_line_between(laser.from_x, laser.from_y, laser.to_x, laser.to_y);
+            laser.age > 0
+        });
+        if let Some(tp) = self.piecepicker {
+            ctx_alpha(0.5);
+            let wh = tp.shape().to_bbox();
+            ctx_draw_image(tp.asset().to_friendly(), self.inputs.mouse_x, self.inputs.mouse_y, 0.0, wh.0, wh.1);
+            ctx_alpha(1.0);
+            if let Some(field) = tp.field() {
+                ctx_stroke(1.0, "white");
+                ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, field);
+            }
+        }
+        else {
+            ctx_stroke(2.0, "white");
+            ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, 5.0);
+        }
     }
 
     pub fn set_mouse_pos(&mut self, x : f32, y : f32) {
@@ -450,8 +489,10 @@ impl State {
                 if let Some(piece) = self.piecepicker {
                     if self.money >= piece.price() {
                         self.place(piece);
-                        self.piecepicker = None;
-                        clear_piecepicker();
+                        if !self.inputs.key("Shift") {
+                            self.piecepicker = None;
+                            clear_piecepicker();
+                        }
                     }
                 }
                 else if let None = self.hovered { // if we aren't hovering anything new, create a path node
@@ -655,7 +696,15 @@ impl State {
                                 send(ClientMessage::StrategyClear { piece : *id });
                             }
                         }
-                    }
+                    },
+                    ServerMessage::LaserCast { caster : _, from_x, from_y, to_x, to_y } => {
+                        self.lasers.push(Laser {
+                            from_x : *from_x,
+                            from_y : *from_y,
+                            to_x : *to_x,
+                            to_y : *to_y, age : 2
+                        });
+                    },
                     _ => {
                         alert(&format!("bad protocol frame {:?}", msg));
                     }

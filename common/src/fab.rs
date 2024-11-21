@@ -74,9 +74,9 @@ impl std::cmp::PartialOrd for FabLevels {
         if *self == *other {
             return Some(std::cmp::Ordering::Equal);
         }
-        if self.missiles > other.missiles && self.ships > other.ships && self.econ > other.econ && self.defense > other.defense && self.buildings > other.buildings {
-            return Some(std::cmp::Ordering::Greater);
+        if self.missiles < other.missiles || self.ships < other.ships || self.econ < other.econ || self.defense < other.defense || self.buildings < other.buildings {
+            return Some(std::cmp::Ordering::Less);
         }
-        Some(std::cmp::Ordering::Less)
+        Some(std::cmp::Ordering::Greater)
     }
 }

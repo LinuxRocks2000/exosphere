@@ -116,7 +116,7 @@ export function setup_placemenu_row(index) {
 export function add_placemenu_item(row, id, asset) {
     let el = document.createElement("div");
     let inp = document.createElement("input");
-    inp.class = "picker_radio";
+    inp.className = "picker_radio";
     inp.type = "radio";
     inp.name = "picker_" + row;
     let domID = "picker_" + row + "_" + id;
@@ -137,10 +137,19 @@ export function add_placemenu_item(row, id, asset) {
             window.exosphere.state.piece_unpicked();
         }
     });
+    inp.addEventListener("mousedown", () => {
+        if (inp.checked) {
+            requestAnimationFrame(clear_piecepicker);
+        }
+    })
 }
 
 export function clear_piecepicker() {
     for (el of document.getElementsByClassName("picker_radio")) {
         el.checked = false;
     }
+}
+
+export function ctx_alpha(alpha) {
+    window.exosphere.ctx.globalAlpha = alpha;
 }

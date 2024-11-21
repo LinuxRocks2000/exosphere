@@ -65,9 +65,10 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
             continue;
         }
         let mut health = 0.0;
+        piece.insert(ev.tp.shape().to_collider());
         match ev.tp {
             PieceType::BasicFighter => {
-                piece.insert((ev.tp.shape().to_collider(), Spaceshipoid::of(Ship::normal(), ev.x, ev.y), Gun::mediocre()));
+                piece.insert((Spaceshipoid::of(Ship::normal(), ev.x, ev.y), Gun::mediocre()));
                 health = 3.0;
             },
             PieceType::Castle => {
@@ -75,47 +76,47 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
                 let fab = Fabber::castle();
                 let _ = broadcast.send(ServerMessage::Territory { id : piece.id().into(), radius : terr.radius });
                 let _ = broadcast.send(ServerMessage::Fabber { id : piece.id().into(), radius : fab.radius });
-                piece.insert((ev.tp.shape().to_collider(), terr, fab));
+                piece.insert((terr, fab));
                 health = 6.0;
             },
             PieceType::TieFighter => {
-                piece.insert((ev.tp.shape().to_collider(), Spaceshipoid::of(Ship::normal(), ev.x, ev.y), Gun::basic_repeater(2)));
+                piece.insert((Spaceshipoid::of(Ship::normal(), ev.x, ev.y), Gun::basic_repeater(2)));
                 health = 3.0;
             },
             PieceType::Sniper => {
-                piece.insert((Collider::cuboid(30.0, 15.0), Spaceshipoid::of(Ship::fast(), ev.x, ev.y), Gun::sniper()));
+                piece.insert((Spaceshipoid::of(Ship::fast(), ev.x, ev.y), Gun::sniper()));
                 health = 3.0;
             },
             PieceType::DemolitionCruiser => {
-                piece.insert((Collider::cuboid(20.0, 20.0), Spaceshipoid::of(Ship::slow(), ev.x, ev.y), Gun::bomber()));
+                piece.insert((Spaceshipoid::of(Ship::slow(), ev.x, ev.y), Gun::bomber()));
                 health = 3.0;
             },
             PieceType::Battleship => {
-                piece.insert((Collider::cuboid(75.0, 100.0), Spaceshipoid::of(Ship::slow(), ev.x, ev.y), Gun::mediocre().extended_barrels(4, 40.0).offset(90.0)));
+                piece.insert((Spaceshipoid::of(Ship::slow(), ev.x, ev.y), Gun::mediocre().extended_barrels(4, 40.0).offset(90.0)));
                 health = 12.0;
             },
             PieceType::Seed => {
-                piece.insert((Collider::cuboid(3.5, 3.5), Seed::new()));
+                piece.insert((Seed::new()));
                 health = 1.0;
             },
             PieceType::Chest => {
-                piece.insert((Collider::cuboid(10.0, 10.0), Chest{}));
+                piece.insert((Chest{}));
                 health = 1.0;
             },
             PieceType::Farmhouse => {
-                piece.insert((Collider::cuboid(25.0, 25.0), Farmhouse {}));
+                piece.insert((Farmhouse {}));
                 health = 2.0;
             },
             PieceType::BallisticMissile => {
-                piece.insert((Collider::cuboid(17.5, 10.0), Spaceshipoid::of(Missile::ballistic(), ev.x, ev.y)));
+                piece.insert((Spaceshipoid::of(Missile::ballistic(), ev.x, ev.y)));
                 health = 1.0;
             },
             PieceType::SeekingMissile => {
-                piece.insert((Collider::cuboid(17.5, 10.0), Spaceshipoid::of(Missile::cruise().with_intercept_burn(200.0), ev.x, ev.y)));
+                piece.insert((Spaceshipoid::of(Missile::cruise().with_intercept_burn(200.0), ev.x, ev.y)));
                 health = 1.0;
             },
             PieceType::HypersonicMissile => {
-                piece.insert((Collider::cuboid(17.5, 5.0), Spaceshipoid::of(Missile::hypersonic(), ev.x, ev.y), CollisionExplosion {
+                piece.insert((Spaceshipoid::of(Missile::hypersonic(), ev.x, ev.y), CollisionExplosion {
                     explosion : ExplosionProperties {
                         damage : 1.0,
                         radius : 100.0
@@ -124,7 +125,7 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
                 health = 1.0;
             },
             PieceType::TrackingMissile => {
-                piece.insert((Collider::cuboid(17.5, 8.5), Spaceshipoid::of(Missile::hypersonic().with_intercept_burn(200.0), ev.x, ev.y), CollisionExplosion {
+                piece.insert((Spaceshipoid::of(Missile::hypersonic().with_intercept_burn(200.0), ev.x, ev.y), CollisionExplosion {
                     explosion : ExplosionProperties {
                         damage : 1.0,
                         radius : 100.0
@@ -133,25 +134,26 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
                 health = 1.0;
             },
             PieceType::CruiseMissile => {
-                piece.insert((Collider::cuboid(17.5, 5.0), Spaceshipoid::of(Missile::cruise(), ev.x, ev.y), CollisionExplosion {
+                piece.insert((Spaceshipoid::of(Missile::cruise(), ev.x, ev.y), CollisionExplosion {
                     explosion : ExplosionProperties {
                         damage : 4.0,
                         radius : 200.0
                     }
                 }));
             },
-            PieceType::Bullet => {}, // not implemented: bullets must be created by the discharge_barrel function
-            PieceType::SmallBomb => {}, // same
-            PieceType::FleetDefenseShip => {} // TODO: fleet defense ships
+            PieceType::LaserNode => {
+                piece.insert((LaserNode::new(2)));
+            },
+            PieceType::ScrapShip => {
+                piece.insert((Spaceshipoid::of(Ship::normal(), ev.x, ev.y), ScrapShip::new()));
+            },
+            _ => {}
         };
         piece.insert(GamePiece::new(ev.tp, ev.owner, ev.slot, health));
         let _ = broadcast.send(ServerMessage::ObjectCreate { x : ev.x, y : ev.y, a : ev.a, owner : ev.owner, id : piece.id().into(), tp : ev.tp });
         let id = piece.id();
-        if let PieceType::Farmhouse = ev.tp {
-            commands.spawn((FieldSensor::farmhouse(id), Collider::ball(100.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
-        }
-        if let PieceType::SeekingMissile = ev.tp {
-            commands.spawn((FieldSensor::farmhouse(id), Collider::ball(300.0), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
+        if let Some(radius) = ev.tp.sensor() {
+            commands.spawn((FieldSensor::new(id, radius), Collider::ball(radius), TransformBundle::from(transform), Sensor, ActiveEvents::COLLISION_EVENTS));
         }
     }
 }

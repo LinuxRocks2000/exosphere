@@ -14,6 +14,8 @@
 // TODO TODO TODO: fix the sensor leak: when a sensored thing dies, its sensor persists. the sensor doesn't do anything because of attachment checks, but it's still *there*
 // wasting memory and cpu cycles.
 
+// TODO: fix the ghost bug (under some circumstances, cleanup doesn't seem to correctly delete some pieces, leaving "ghosts" that persist until server reset)
+
 // note:
 /*
     user ids are u64s.
@@ -205,144 +207,18 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
 }
 
 
-fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>) {
+fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>, mut destroy : EventWriter<PieceDestroyedEvent>) {
     let mut place = Placer(place);
     for (entity, transform, mut seed) in seeds.iter_mut() {
         if seed.growing {
             seed.time_to_grow -= 1;
         }
         if seed.time_to_grow == 0 {
-            commands.entity(entity).despawn();
+            destroy.send(PieceDestroyedEvent {
+                piece : entity,
+                responsible : PlayerId::SYSTEM
+            });
             place.chest_free(transform.translation.x, transform.translation.y);
-        }
-    }
-}
-
-
-fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
-        mut pieces : Query<(Entity, &mut GamePiece, Option<&Bullet>, Option<&mut Seed>)>,
-        mut spaceshipoids : Query<&mut Spaceshipoid>,
-        farms : Query<&Farmhouse>,
-        explode_on_collision : Query<(Entity, &CollisionExplosion, &Transform)>,
-        explosions : Query<&ExplosionProperties>,
-        velocities : Query<&Velocity, Without<StaticWall>>, // we use this to calculate the relative VELOCITY (NOT collision energy - it's physically inaccurate, but idc) and then the damage they incur.
-        // this means at low speeds you can safely puuuuush, but at high speeds you get destroyed
-        mut piece_destroy : EventWriter<PieceDestroyedEvent>,
-        mut explosion_event : EventWriter<ExplosionEvent>,
-        sensors : Query<&FieldSensor>,
-        clients : Res<ClientMap>) {
-    for event in collision_events.read() {
-        if let CollisionEvent::Started(one, two, _) = event {
-            if let Ok((entity, explode, pos)) = explode_on_collision.get(*one) {
-                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : PlayerId::SYSTEM });
-                explosion_event.send(ExplosionEvent {
-                    x : pos.translation.x,
-                    y : pos.translation.y,
-                    props : explode.explosion
-                });
-            }
-            if let Ok((entity, explode, pos)) = explode_on_collision.get(*two) {
-                piece_destroy.send(PieceDestroyedEvent { piece : entity, responsible : PlayerId::SYSTEM });
-                explosion_event.send(ExplosionEvent {
-                    x : pos.translation.x,
-                    y : pos.translation.y,
-                    props : explode.explosion
-                });
-            }
-            let mut one_dmg : f32 = 0.0; // damage to apply to entity 1
-            let mut two_dmg : f32 = 0.0; // damage to apply to entity 2
-            let mut one_killer = PlayerId::SYSTEM; // the id of the player that owned the piece that damaged the piece
-            let mut two_killer = PlayerId::SYSTEM; // that is one HELL of a sentence
-            // [tyler, several months later] that it is, laddie. that it is.
-            // todo: defense and damage modifiers
-            if let Ok(v1) = velocities.get(*one) {
-                if let Ok(v2) = velocities.get(*two) {
-                    let r_vel = (v1.linvel - v2.linvel).length();
-                    if r_vel >= 400.0 { // anything slower is nondestructive.
-                        // because bullets are usually moving at 400.0 and change, bullets will usually do a little over 1 damage. missiles will do quite a bit more.
-                        let d = (r_vel - 350.0).sqrt() / 10.0;
-                        one_dmg = d;
-                        two_dmg = d;
-                        if let Ok((_, piece_one, _, _)) = pieces.get(*one) {
-                            two_killer = piece_one.owner;
-                        }
-                        if let Ok((_, piece_two, _, _)) = pieces.get(*two) {
-                            one_killer = piece_two.owner;
-                        }
-                    }
-                }
-            }
-            if let Ok(explosion) = explosions.get(*one) {
-                if let Ok((_, _, _, _)) = pieces.get(*two) {
-                    two_dmg += explosion.damage;
-                }
-            }
-            if let Ok(explosion) = explosions.get(*two) {
-                if let Ok((_, _, _, _)) = pieces.get(*one) {
-                    one_dmg += explosion.damage;
-                }
-            }
-            if one_dmg != 0.0 {
-                if let Ok((entity_one, mut piece_one, _, _)) = pieces.get_mut(*one) {
-                    piece_one.health -= one_dmg;
-                    if let Some(client) = clients.get(&piece_one.owner) {
-                        client.send(ServerMessage::Health { id : entity_one.into(), health : piece_one.health / piece_one.start_health });
-                    }
-                    if piece_one.health <= 0.0 {
-                        piece_destroy.send(PieceDestroyedEvent { piece : entity_one, responsible : one_killer });
-                    }
-                }
-            }
-            if two_dmg != 0.0 {
-                if let Ok((entity_two, mut piece_two, _, _)) = pieces.get_mut(*two) {
-                    piece_two.health -= two_dmg;
-                    if let Some(client) = clients.get(&piece_two.owner) {
-                        client.send(ServerMessage::Health { id : entity_two.into(), health : piece_two.health / piece_two.start_health });
-                    }
-                    if piece_two.health <= 0.0 {
-                        piece_destroy.send(PieceDestroyedEvent { piece : entity_two, responsible : two_killer });
-                    }
-                }
-            }
-        }
-        let (one, two) = match event { CollisionEvent::Started(one, two, _) => (one, two), CollisionEvent::Stopped(one, two, _) => (one, two) };
-        let mut sensor = sensors.get(*one);
-        let mut sensor_is_one = true;
-        if let Err(_) = sensor {
-            sensor_is_one = false;
-            sensor = sensors.get(*two);
-        }
-        if let Ok(sensor) = sensor {
-            let mut sensor_owner = PlayerId::SYSTEM;
-            let mut sensor_slot : u8 = 0;
-            if let Ok((_, sensored_piece, _, _)) = pieces.get(sensor.attached_to) {
-                sensor_owner = sensored_piece.owner;
-                sensor_slot = sensored_piece.slot;
-            }
-            let piece = if sensor_is_one {
-                pieces.get_mut(*two)
-            } else {
-                pieces.get_mut(*one)
-            };
-            if let Ok((entity, gamepiece, _, seed)) = piece {
-                if let Some(mut seed) = seed {
-                    if let Ok(_) = farms.get(sensor.attached_to) {
-                        if let CollisionEvent::Started(_, _, _) = event {
-                            seed.growing = true;
-                        }
-                        else {
-                            seed.growing = false;
-                        }
-                    }
-                }
-                if gamepiece.owner != sensor_owner && (gamepiece.slot != sensor_slot || gamepiece.slot == 1) { // check if the piece is enemy or not
-                    if sensor.attached_to != entity { // missiles can't attempt to attack themselves
-                        if let Ok(mut shipoid) = spaceshipoids.get_mut(sensor.attached_to) {       
-                            shipoid.sensor_tripped(entity.into());
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -359,7 +235,7 @@ impl Placer<'_> {
             owner : client,
             slot,
             tp,
-            free : true
+            free : false
         });
     }
 
@@ -819,6 +695,7 @@ async fn main() {
         .add_event::<PlaceEvent>()
         .add_event::<ExplosionEvent>()
         .add_event::<PieceDestroyedEvent>()
+        .add_event::<LaserCastEvent>()
         .insert_resource(config)
         .insert_resource(ClientMap(HashMap::new()))
         .add_plugins(bevy_time::TimePlugin)
@@ -827,9 +704,9 @@ async fn main() {
         .insert_resource(GameConfig {
             width: 5000.0,
             height: 5000.0,
-            wait_period: 10 * UPDATE_RATE as u16, // todo: config files
-            play_period: 10 * UPDATE_RATE as u16, // probably gonna be json because I have no balls
-            strategy_period: 10 * UPDATE_RATE as u16,
+            wait_period: 0 * UPDATE_RATE as u16, // todo: config files
+            play_period: 10 * UPDATE_RATE as u16,
+            strategy_period: 10 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
             max_player_slots: 1000,
             min_player_slots: 1
         })
@@ -850,7 +727,9 @@ async fn main() {
             make_thing, boom, explosion_clear.before(boom).after(handle_collisions),
             on_piece_dead.after(handle_collisions).after(ttl).after(seed_mature),
             update_field_sensors,
-            client_health_check
+            client_health_check,
+            lasernodes, lasers,
+            scrapships,
         )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, (setup, setup_board))
         .set_runner(|mut app| {
