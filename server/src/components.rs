@@ -400,11 +400,23 @@ impl SpaceshipKinematics for Ship {
 
 impl SpaceshipKinematics for Missile {
     fn to_position(&mut self, offset : Vec2, angle : f32, vel : Vec2, angvel : f32) -> KinematicResult {
-        KinematicResult::Noop
+        if offset.length() < self.intercept_burn { // if we're in intercept strike mode
+            let mut impulse = Vec2::from_angle(angle) * self.intercept_burn_power;
+            impulse -= vel.project_onto(offset.perp()) * 0.2;
+            KinematicResult::Thrust(impulse, -loopify(offset.to_angle(), vel.to_angle()) * 200.0 - angvel * 200.0)
+        }
+        else if offset.length() > 30.0 {
+            let mut impulse = Vec2::from_angle(angle) * self.acc_profile - vel * self.decelerator;
+            impulse -= vel.project_onto(offset.perp()) * 0.05;
+            KinematicResult::Thrust(impulse, -loopify(offset.to_angle(), vel.to_angle()) * 50.0 - angvel * 30.0)
+        }
+        else {
+            KinematicResult::Done(Vec2::ZERO, 0.0)
+        }
     }
 
     fn to_angle(&mut self, offset : f32, vel : Vec2, angvel : f32) -> KinematicResult {
-        KinematicResult::Noop
+        KinematicResult::Done(Vec2::ZERO, 0.0) // missiles don't do the angles thing
     }
 }
 

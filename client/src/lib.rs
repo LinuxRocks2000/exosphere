@@ -190,7 +190,8 @@ struct State {
     hovered : Option<PieceId>,
     updating_node : Option<(PieceId, u16)>,
     piecepicker : Option<PieceType>,
-    lasers : Vec<Laser>
+    lasers : Vec<Laser>,
+    explosions : Vec<Explosion>
 }
 
 
@@ -257,6 +258,14 @@ struct Laser {
 }
 
 
+struct Explosion {
+    x : f32,
+    y : f32,
+    rad : f32,
+    age : u8
+}
+
+
 #[wasm_bindgen]
 impl State {
     #[wasm_bindgen(constructor)]
@@ -300,7 +309,8 @@ impl State {
             hovered : None,
             updating_node : None,
             piecepicker : None,
-            lasers : vec![]
+            lasers : vec![],
+            explosions : vec![]
         }
     }
 
@@ -460,6 +470,12 @@ impl State {
             laser.age -= 1;
             ctx_line_between(laser.from_x, laser.from_y, laser.to_x, laser.to_y);
             laser.age > 0
+        });
+        ctx_fill("orange");
+        self.explosions.retain_mut(|explosion : &mut Explosion| {
+            explosion.age -= 1;
+            ctx_fill_circle(explosion.x, explosion.y, explosion.rad);
+            explosion.age > 0
         });
         if let Some(tp) = self.piecepicker {
             ctx_alpha(0.5);
@@ -703,6 +719,14 @@ impl State {
                             from_y : *from_y,
                             to_x : *to_x,
                             to_y : *to_y, age : 2
+                        });
+                    },
+                    ServerMessage::Explosion { x, y, radius, damage : _ } => {
+                        self.explosions.push(Explosion {
+                            x : *x,
+                            y : *y,
+                            rad : *radius,
+                            age : 2
                         });
                     },
                     _ => {
