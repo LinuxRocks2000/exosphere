@@ -383,8 +383,8 @@ impl State {
                 }
             }
 
-            let dx = obj.x - self.inputs.mouse_x;
-            let dy = obj.y - self.inputs.mouse_y;
+            let dx = self.inputs.mouse_x - obj.x;
+            let dy = self.inputs.mouse_y - obj.y;
 
             if dx * dx + dy * dy < 6.0 * 6.0 && obj.tp.user_movable() && obj.owner == self.id {
                 self.hovered = Some(obj.id);

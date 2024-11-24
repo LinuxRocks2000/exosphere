@@ -379,6 +379,7 @@ fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &mu
         let pos = transform.translation.truncate();
         let ang = transform.rotation.to_euler(EulerRot::ZYX).0;
         // updates on position
+        piece.c_vel = piece.last_update_pos - pos;
         if (pos - piece.last_update_pos).length() > 1.0 || loopify(ang, piece.last_update_ang).abs() > 0.01 {
             // are basically straight lines.
             let _ = broadcast.send(ServerMessage::ObjectMove { // ignore the errors

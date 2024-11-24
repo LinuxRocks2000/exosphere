@@ -39,6 +39,7 @@ pub(crate) struct GamePiece {
     // but for now it's convenient
     pub(crate) last_update_pos : Vec2,
     pub(crate) last_update_ang : f32,
+    pub(crate) c_vel : Vec2,
     pub(crate) start_health : f32,
     pub(crate) health : f32
 }
@@ -50,10 +51,8 @@ impl GamePiece {
             tp,
             owner,
             slot,
-            last_update_pos : Vec2 {
-                x : 0.0,
-                y : 0.0
-            },
+            last_update_pos : Vec2::ZERO,
+            c_vel : Vec2::ZERO,
             last_update_ang : 0.0,
             start_health : health,
             health : health
@@ -543,6 +542,45 @@ impl TargetingAlgorithm for StandardTargeting {
 
     fn get_target_angle(&self, off_vec : Vec2, _ : Vec2) -> f32 {
         off_vec.to_angle()
+    }
+}
+
+
+pub struct SmartTargeting;
+
+
+impl TargetingAlgorithm for SmartTargeting {
+    fn will_attack(&self, tp : PieceType) -> bool {
+        match tp {
+            PieceType::Bullet => false,
+            _ => true
+        }
+    }
+
+    fn get_target_angle(&self, off_vec : Vec2, vel : Vec2) -> f32 { // see https://www.gamedev.net/forums/topic/582894-target-leading-in-2d/
+        const BULLET_SPEED : f32 = 7.5; // if you're using this later for something else, please for the love of god figure out how to do magic on inertial properties
+        // this is really getting out of hand
+        // (7.5 was calculated by printing out bullet deltas)
+        let a = vel.dot(vel) - BULLET_SPEED * BULLET_SPEED;
+        let b = 2.0 * vel.dot(off_vec);
+        let c = off_vec.dot(off_vec);
+
+        let in_root = b * b - 4.0 * a * c;
+        if in_root < 0.0 { // because we're taking the square root, if in_root is less than 0, there are no real firing solutions
+            return off_vec.to_angle();
+        }
+        let r1 = (b + in_root.sqrt()) / (2.0 * a);
+        let r2 = (b - in_root.sqrt()) / (2.0 * a);
+        let t = if r1 < r2 {
+            r1
+        } else {
+            r2
+        };
+        return (off_vec + vel * t).to_angle();
+    }
+
+    fn swivel_kinematics(&self, offset : f32, vel : f32) -> f32 {
+        (offset * 400.0 - vel * 20.0) * 1000.0
     }
 }
 

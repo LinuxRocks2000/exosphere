@@ -152,6 +152,9 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
             },
             PieceType::BasicTurret => {
                 piece.insert((Turret::new(StandardTargeting), Gun::mediocre()));
+            },
+            PieceType::SmartTurret => {
+                piece.insert((Turret::new(SmartTargeting), Gun::mediocre()));
             }
             _ => {}
         };

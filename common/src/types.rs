@@ -67,7 +67,7 @@ pub enum PieceType {
     CruiseMissile, // impl
     ScrapShip, // impl
     LaserNode, // impl
-    BasicTurret, // todo
+    BasicTurret, // impl
     LaserNodeLR, // impl
     SmartTurret, // todo
     BlastTurret, // todo
@@ -154,6 +154,7 @@ impl PieceType {
             Self::ScrapShip => 20,
             Self::LaserNodeLR => 80,
             Self::BasicTurret => 50,
+            Self::SmartTurret => 100,
             _ => 0
         }
     }
@@ -163,7 +164,8 @@ impl PieceType {
             Self::BasicFighter | Self::TieFighter | Self::Sniper | Self::CruiseMissile |
             Self::DemolitionCruiser | Self::Battleship | Self::Seed | Self::TrackingMissile |
             Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile | Self::HypersonicMissile |
-            Self::ScrapShip | Self::LaserNode | Self::FleetDefenseShip | Self::LaserNodeLR | Self::BasicTurret => true, // if you want a type to be user placeable, just add it to this lil' blob.
+            Self::ScrapShip | Self::LaserNode | Self::FleetDefenseShip | Self::LaserNodeLR | Self::BasicTurret | 
+            Self::SmartTurret => true, // if you want a type to be user placeable, just add it to this lil' blob.
             _ => false
         }
     }
@@ -196,6 +198,7 @@ impl PieceType {
             Self::ScrapShip => FabLevels::econ(2),
             Self::LaserNodeLR => FabLevels::defense(2),
             Self::BasicTurret => FabLevels::defense(1),
+            Self::SmartTurret => FabLevels::defense(2),
             _ => FabLevels::default()
         }
     }
@@ -223,6 +226,7 @@ impl PieceType {
             Self::ScrapShip => Asset::Simple("scrapship.svg"),
             Self::LaserNodeLR => Asset::Simple("lasernode_lr.svg"),
             Self::BasicTurret => Asset::Partisan("basic_turret_friendly.svg", "basic_turret_enemy.svg"),
+            Self::SmartTurret => Asset::Partisan("smart_turret_friendly.svg", "smart_turret_enemy.svg"),
             _ => Asset::Unimpl
         }
     }
@@ -250,6 +254,7 @@ impl PieceType {
             Self::ScrapShip => Shape::Box(50.0, 50.0),
             Self::LaserNodeLR => Shape::Box(30.0, 30.0),
             Self::BasicTurret => Shape::Box(40.0, 25.0),
+            Self::SmartTurret => Shape::Box(40.0, 25.0),
             _ => Shape::Unimpl
         }
     }
@@ -262,6 +267,7 @@ impl PieceType {
             Self::LaserNodeLR => Some(600.0),
             Self::ScrapShip => Some(300.0),
             Self::BasicTurret => Some(350.0),
+            Self::SmartTurret => Some(350.0),
             _ => None
         }
     }
@@ -277,6 +283,7 @@ impl PieceType {
         match self {
             Self::Farmhouse => true, // some types have overrides for fields drawn on GPU, this is just the ones drawn on CPU
             Self::BasicTurret => true,
+            Self::SmartTurret => true,
             _ => false
         }
     }
