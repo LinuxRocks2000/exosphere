@@ -415,7 +415,7 @@ impl SpaceshipKinematics for Missile {
         }
     }
 
-    fn to_angle(&mut self, offset : f32, vel : Vec2, angvel : f32) -> KinematicResult {
+    fn to_angle(&mut self, _offset : f32, _vel : Vec2, _angvel : f32) -> KinematicResult {
         KinematicResult::Done(Vec2::ZERO, 0.0) // missiles don't do the angles thing
     }
 }
@@ -514,6 +514,66 @@ impl ScrapShip {
     pub fn leave(&mut self, e : Entity) {
         if let Some(index) = self.seeds_in_range.iter().position(|x| *x == e) {
             self.seeds_in_range.remove(index);
+        }
+    }
+}
+
+
+pub trait TargetingAlgorithm {
+    fn will_attack(&self, tp : PieceType) -> bool;
+
+    fn get_target_angle(&self, off_vec : Vec2, other_vel : Vec2) -> f32;
+
+    fn swivel_kinematics(&self, offset : f32, vel : f32) -> f32 {
+        (offset * 100.0 - vel * vel * vel * 20.0) * 1600.0
+    }
+}
+
+
+pub struct StandardTargeting;
+
+
+impl TargetingAlgorithm for StandardTargeting {
+    fn will_attack(&self, tp : PieceType) -> bool {
+        match tp {
+            PieceType::Bullet => false,
+            _ => true
+        }
+    }
+
+    fn get_target_angle(&self, off_vec : Vec2, _ : Vec2) -> f32 {
+        off_vec.to_angle()
+    }
+}
+
+
+#[derive(Component)]
+pub struct Turret {
+    pub targeting_algorithm : Box<dyn TargetingAlgorithm + Send + Sync>,
+    pub in_range : Vec<Entity>
+}
+
+
+impl Turret {
+    pub fn new(thing : impl TargetingAlgorithm + Send + Sync + 'static) -> Self {
+        Self {
+            targeting_algorithm : Box::new(thing),
+            in_range : vec![]
+        }
+    }
+
+    pub fn enter(&mut self, e : Entity) {
+        for seed in self.in_range.iter() { // don't duplicate
+            if *seed == e {
+                return;
+            }
+        }
+        self.in_range.push(e);
+    }
+
+    pub fn leave(&mut self, e : Entity) {
+        if let Some(index) = self.in_range.iter().position(|x| *x == e) {
+            self.in_range.remove(index);
         }
     }
 }

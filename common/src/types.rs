@@ -48,31 +48,31 @@ use serde_derive::{ Serialize, Deserialize };
 #[repr(u16)]
 #[derive(Copy, Clone, Debug, PartialEq, FromPrimitive, Serialize, Deserialize)]
 pub enum PieceType {
-    BasicFighter,
-    Castle,
-    Bullet,
-    TieFighter,
-    Sniper,
-    DemolitionCruiser,
-    Battleship,
-    SmallBomb,
-    Seed,
-    Chest,
-    Farmhouse,
-    BallisticMissile,
-    FleetDefenseShip,
-    SeekingMissile,
-    HypersonicMissile,
-    TrackingMissile,
-    CruiseMissile,
-    ScrapShip,
-    LaserNode,
-    BasicTurret,
-    LaserNodeLR,
-    SmartTurret,
-    BlastTurret,
-    LaserTurret,
-    EmpZone
+    BasicFighter, // impl
+    Castle, // impl
+    Bullet, // impl
+    TieFighter, // impl
+    Sniper, // impl
+    DemolitionCruiser, // impl
+    Battleship, // impl
+    SmallBomb, // impl
+    Seed, // impl
+    Chest, // impl
+    Farmhouse, // impl
+    BallisticMissile, // impl
+    FleetDefenseShip, // todo
+    SeekingMissile, // impl
+    HypersonicMissile, // impl
+    TrackingMissile, // impl
+    CruiseMissile, // impl
+    ScrapShip, // impl
+    LaserNode, // impl
+    BasicTurret, // todo
+    LaserNodeLR, // impl
+    SmartTurret, // todo
+    BlastTurret, // todo
+    LaserTurret, // todo
+    EmpZone // todo
 }
 
 
@@ -152,6 +152,8 @@ impl PieceType {
             Self::CruiseMissile => 50,
             Self::LaserNode => 10,
             Self::ScrapShip => 20,
+            Self::LaserNodeLR => 80,
+            Self::BasicTurret => 50,
             _ => 0
         }
     }
@@ -161,7 +163,7 @@ impl PieceType {
             Self::BasicFighter | Self::TieFighter | Self::Sniper | Self::CruiseMissile |
             Self::DemolitionCruiser | Self::Battleship | Self::Seed | Self::TrackingMissile |
             Self::Farmhouse | Self::BallisticMissile | Self::SeekingMissile | Self::HypersonicMissile |
-            Self::ScrapShip | Self::LaserNode | Self::FleetDefenseShip => true, // if you want a type to be user placeable, just add it to this lil' blob.
+            Self::ScrapShip | Self::LaserNode | Self::FleetDefenseShip | Self::LaserNodeLR | Self::BasicTurret => true, // if you want a type to be user placeable, just add it to this lil' blob.
             _ => false
         }
     }
@@ -192,6 +194,8 @@ impl PieceType {
             Self::CruiseMissile => FabLevels::missiles(4),
             Self::LaserNode => FabLevels::defense(1),
             Self::ScrapShip => FabLevels::econ(2),
+            Self::LaserNodeLR => FabLevels::defense(2),
+            Self::BasicTurret => FabLevels::defense(1),
             _ => FabLevels::default()
         }
     }
@@ -217,6 +221,8 @@ impl PieceType {
             Self::CruiseMissile => Asset::Partisan("cruise_missile_friendly.svg", "cruise_missile_enemy.svg"),
             Self::LaserNode => Asset::Simple("lasernode.svg"),
             Self::ScrapShip => Asset::Simple("scrapship.svg"),
+            Self::LaserNodeLR => Asset::Simple("lasernode_lr.svg"),
+            Self::BasicTurret => Asset::Partisan("basic_turret_friendly.svg", "basic_turret_enemy.svg"),
             _ => Asset::Unimpl
         }
     }
@@ -242,6 +248,8 @@ impl PieceType {
             Self::CruiseMissile => Shape::Box(35.0, 10.0),
             Self::LaserNode => Shape::Box(15.0, 15.0),
             Self::ScrapShip => Shape::Box(50.0, 50.0),
+            Self::LaserNodeLR => Shape::Box(30.0, 30.0),
+            Self::BasicTurret => Shape::Box(40.0, 25.0),
             _ => Shape::Unimpl
         }
     }
@@ -251,7 +259,9 @@ impl PieceType {
             Self::Farmhouse => Some(100.0),
             Self::SeekingMissile => Some(300.0),
             Self::LaserNode => Some(200.0),
+            Self::LaserNodeLR => Some(600.0),
             Self::ScrapShip => Some(300.0),
+            Self::BasicTurret => Some(350.0),
             _ => None
         }
     }
@@ -266,6 +276,7 @@ impl PieceType {
     pub fn show_field(&self) -> bool { // should the field for this piece be visible at all times?
         match self {
             Self::Farmhouse => true, // some types have overrides for fields drawn on GPU, this is just the ones drawn on CPU
+            Self::BasicTurret => true,
             _ => false
         }
     }

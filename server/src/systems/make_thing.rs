@@ -96,23 +96,23 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
                 health = 12.0;
             },
             PieceType::Seed => {
-                piece.insert((Seed::new()));
+                piece.insert(Seed::new());
                 health = 1.0;
             },
             PieceType::Chest => {
-                piece.insert((Chest{}));
+                piece.insert(Chest{});
                 health = 1.0;
             },
             PieceType::Farmhouse => {
-                piece.insert((Farmhouse {}));
+                piece.insert(Farmhouse {});
                 health = 2.0;
             },
             PieceType::BallisticMissile => {
-                piece.insert((Spaceshipoid::of(Missile::ballistic(), ev.x, ev.y)));
+                piece.insert(Spaceshipoid::of(Missile::ballistic(), ev.x, ev.y));
                 health = 1.0;
             },
             PieceType::SeekingMissile => {
-                piece.insert((Spaceshipoid::of(Missile::cruise().with_intercept_burn(200.0), ev.x, ev.y)));
+                piece.insert(Spaceshipoid::of(Missile::cruise().with_intercept_burn(200.0), ev.x, ev.y));
                 health = 1.0;
             },
             PieceType::HypersonicMissile => {
@@ -142,11 +142,17 @@ pub fn make_thing(mut commands : Commands, broadcast : ResMut<Sender>, mut thing
                 }));
             },
             PieceType::LaserNode => {
-                piece.insert((LaserNode::new(2)));
+                piece.insert(LaserNode::new(2));
+            },
+            PieceType::LaserNodeLR => {
+                piece.insert(LaserNode::new(2));
             },
             PieceType::ScrapShip => {
                 piece.insert((Spaceshipoid::of(Ship::normal(), ev.x, ev.y), ScrapShip::new()));
             },
+            PieceType::BasicTurret => {
+                piece.insert((Turret::new(StandardTargeting), Gun::mediocre()));
+            }
             _ => {}
         };
         piece.insert(GamePiece::new(ev.tp, ev.owner, ev.slot, health));

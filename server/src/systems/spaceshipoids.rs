@@ -36,7 +36,7 @@ pub fn move_spaceshipoids(mut shipoids : Query<(&mut ExternalImpulse, &Velocity,
                         KinematicResult::Done(Vec2::ZERO, 0.0)
                     }
                 },
-                PathNode::Rotation(ang, dur) => {
+                PathNode::Rotation(ang, _) => {
                     let off = loopify(cangle, ang);
                     spaceship.kinematics.to_angle(off, velocity.linvel, velocity.angvel)
                 }

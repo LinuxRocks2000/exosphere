@@ -15,18 +15,19 @@
 use crate::components::*;
 use crate::events::*;
 use bevy::prelude::*;
+use common::types::*;
 
 
 // cast lasers between nodes
-pub fn lasernodes(lasernodes : Query<(Entity, &LaserNode, &Transform)>, mut laser_cast : EventWriter<LaserCastEvent>) {
-    for (entity, node, position) in lasernodes.iter() {
+pub fn lasernodes(lasernodes : Query<(Entity, &GamePiece, &LaserNode, &Transform)>, mut laser_cast : EventWriter<LaserCastEvent>) {
+    for (entity, _, node, position) in lasernodes.iter() {
         for x in 0..node.allowable.min(node.slots.read().unwrap().len()) {
-            if let Ok((_, other, otherposition)) = lasernodes.get(*node.slots.read().unwrap().get(x).unwrap()) {
+            if let Ok((_, opiece, _, otherposition)) = lasernodes.get(*node.slots.read().unwrap().get(x).unwrap()) {
                 laser_cast.send(LaserCastEvent {
                     caster : entity,
                     from : position.translation.truncate(),
                     dir : (otherposition.translation - position.translation).truncate().normalize(),
-                    max_dist : ((otherposition.translation - position.translation).length() - 12.0).max(0.0),
+                    max_dist : ((otherposition.translation - position.translation).length() - match opiece.tp { PieceType::LaserNode => 12.0, PieceType::LaserNodeLR => 23.0, _ => 0.0 }).max(0.0),
                     dmg : 1.0,
                     exclusive : None
                 });

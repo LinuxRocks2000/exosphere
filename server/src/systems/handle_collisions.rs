@@ -34,6 +34,7 @@ pub fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
     sensors : Query<&FieldSensor>,
     lasernodes : Query<&LaserNode>,
     mut scrapships : Query<&mut ScrapShip>,
+    mut turrets : Query<&mut Turret>,
     chests : Query<&Chest>,
     clients : Res<ClientMap>) {
     for event in collision_events.read() {
@@ -187,6 +188,18 @@ pub fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                         }
                         else {
                             ss.leave(hit_entity);
+                        }
+                    }
+                }
+            }
+            {
+                if hit_entity != sensor.attached_to {
+                    if let Ok(mut turret) = turrets.get_mut(sensor.attached_to) {
+                        if let CollisionEvent::Started(_, _, _) = event {
+                            turret.enter(hit_entity);
+                        }
+                        else {
+                            turret.leave(hit_entity);
                         }
                     }
                 }

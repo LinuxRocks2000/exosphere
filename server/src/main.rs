@@ -207,7 +207,7 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
 }
 
 
-fn seed_mature(mut commands : Commands, mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>, mut destroy : EventWriter<PieceDestroyedEvent>) {
+fn seed_mature(mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>, mut destroy : EventWriter<PieceDestroyedEvent>) {
     let mut place = Placer(place);
     for (entity, transform, mut seed) in seeds.iter_mut() {
         if seed.growing {
@@ -704,7 +704,7 @@ async fn main() {
         .insert_resource(GameConfig {
             width: 5000.0,
             height: 5000.0,
-            wait_period: 0 * UPDATE_RATE as u16, // todo: config files
+            wait_period: 15 * UPDATE_RATE as u16, // todo: config files
             play_period: 10 * UPDATE_RATE as u16,
             strategy_period: 10 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
             max_player_slots: 1000,
@@ -729,7 +729,7 @@ async fn main() {
             update_field_sensors,
             client_health_check,
             lasernodes, lasers,
-            scrapships,
+            scrapships, turrets,
         )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, (setup, setup_board))
         .set_runner(|mut app| {

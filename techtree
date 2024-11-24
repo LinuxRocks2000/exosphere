@@ -43,7 +43,7 @@ The things that you can make are in this tree:
             but they're small and simple and can be placed by a fabber. $200/level.
 * Laser Node: Laser nodes fire lasers between each other to create difficult-to-pass gates. They can destroy a single weapon but can become overwhelmed at larger scales. $10 each. Level 1.
 * Basic Turret: Aims with the low-fidelity turret algorithm (can hit slow-moving or large objects), fires a minor bullet every 20 play ticks. $50. Level 1.
-* Laser Node Long Range: Three times the range of a usual laser node. Useful for covering holes without providing a weak point. Will connect at short range to normal laser nodes.
+* Laser Node Long Range: Three times the range of a usual laser node. Useful for covering holes without providing a weak point. Will connect to normal laser nodes.
                           $80. Level 2.
 * Smart Turret: Aims with the high-fidelity turret algorithm and fires a minor bullet every 20 play ticks. $100. Level 2.
 * Blast Turret: Aims with the high-fidelity turret algorithm and fires a glide bomb every 30 play ticks. $150. Level 3.

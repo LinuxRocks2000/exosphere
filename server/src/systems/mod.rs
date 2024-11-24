@@ -31,3 +31,6 @@ pub use lasers::*;
 
 pub mod scrapships;
 pub use scrapships::*;
+
+pub mod turret;
+pub use turret::*;
