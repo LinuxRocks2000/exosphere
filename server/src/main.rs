@@ -443,6 +443,7 @@ fn setup(mut commands : Commands, mut state : ResMut<GameState>, config : Res<Ga
 
 struct EmptyWorld;
 
+
 impl bevy::ecs::world::Command for EmptyWorld {
     fn apply(self, world : &mut World) {
         world.clear_entities(); // todo: don't clear (or do respawn) things that should stick around, like walls
@@ -450,7 +451,7 @@ impl bevy::ecs::world::Command for EmptyWorld {
 }
 
 
-fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>) {
+fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut piece_kill : EventWriter<PieceDestroyedEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>) {
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
     // * if the client has any remaining Territory, it's not dead, false alarm
@@ -469,11 +470,31 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
                 state.currently_playing -= 1;
                 clients[&ev.client].send(ServerMessage::YouLose);
                 clients.get_mut(&ev.client).unwrap().alive = false;
+                if clients[&ev.client].id != PlayerId::SYSTEM {
+                    for (_, piece, entity) in pieces.iter() {
+                        if piece.owner == clients[&ev.client].id {
+                            piece_kill.send(PieceDestroyedEvent {
+                                piece : entity.into(),
+                                responsible : ev.client
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            for (_, piece, entity) in pieces.iter() {
+                if piece.owner == ev.client {
+                    piece_kill.send(PieceDestroyedEvent {
+                        piece : entity.into(),
+                        responsible : ev.client
+                    });
+                }
             }
         }
         did_something = true;
     }
-    if did_something { // only if we made a change does it make sense to update the state here
+    if !state.io && did_something { // only if we made a change does it make sense to update the state here
         if state.playing && state.currently_playing < 2 {
             if state.currently_playing == 1 {
                 let mut winid = PlayerId::SYSTEM;

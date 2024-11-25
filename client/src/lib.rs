@@ -210,12 +210,15 @@ impl State {
     fn overlay(&mut self) {
         self.fabber_buf.clear();
         self.territory_buf.clear();
+        let mut territories_count = 0;
+        let mut fabbers_count = 0;
         for (piece, fabber) in &self.fabber_data {
             if let Some(obj) = self.object_data.get(&piece) {
                 self.fabber_buf.reserve(3);
                 self.fabber_buf.push(obj.x);
                 self.fabber_buf.push(obj.y);
                 self.fabber_buf.push(fabber.radius * if self.is_friendly(obj.owner) { 1.0 } else { -1.0 });
+                fabbers_count += 1;
             }
         }
         for (piece, fabber) in &self.territory_data {
@@ -224,9 +227,10 @@ impl State {
                 self.territory_buf.push(obj.x);
                 self.territory_buf.push(obj.y);
                 self.territory_buf.push(fabber.radius * if self.is_friendly(obj.owner) { 1.0 } else { -1.0 });
+                territories_count += 1;
             }
         }
-        render_background(&mut self.fabber_buf, self.fabber_data.len(), &mut self.territory_buf, self.territory_data.len());
+        render_background(&mut self.fabber_buf, fabbers_count, &mut self.territory_buf, territories_count);
     }
 
     fn is_friendly(&self, other : PlayerId) -> bool {
@@ -521,7 +525,7 @@ impl State {
                         }
                     }
                 }
-                else if self.hovered_anything.is_some() && self.active_piece.is_some() {
+                else if self.hovered.is_none() && self.hovered_anything.is_some() && self.active_piece.is_some() {
                     if let Some(mut piece) = self.object_data.get_mut(&self.active_piece.unwrap()) {
                         if piece.tp.supports_target_control() {
                             piece.extend_path(PathNode::Target(self.hovered_anything.unwrap()));
