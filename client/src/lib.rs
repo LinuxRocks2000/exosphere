@@ -325,22 +325,22 @@ impl State {
     pub fn tick(&mut self) {
         let ysc = (SCROLL_BASE + SCROLL_ACC * self.y_scroll_ramp).min(SCROLL_MAX);
         let xsc = (SCROLL_BASE + SCROLL_ACC * self.x_scroll_ramp).min(SCROLL_MAX);
-        if self.inputs.key("ArrowUp") {
+        if self.inputs.key("ArrowUp") || self.inputs.key("w") {
             self.off_y -= ysc;
             self.y_scroll_ramp += 1.0;
         }
-        else if self.inputs.key("ArrowDown") {
+        else if self.inputs.key("ArrowDown") || self.inputs.key("s") {
             self.off_y += ysc;
             self.y_scroll_ramp += 1.0;
         }
         else {
             self.y_scroll_ramp = 0.0;
         }
-        if self.inputs.key("ArrowLeft") {
+        if self.inputs.key("ArrowLeft") || self.inputs.key("a") {
             self.off_x -= xsc;
             self.x_scroll_ramp += 1.0;
         }
-        else if self.inputs.key("ArrowRight") {
+        else if self.inputs.key("ArrowRight") || self.inputs.key("d") {
             self.off_x += xsc;
             self.x_scroll_ramp += 1.0;
         }

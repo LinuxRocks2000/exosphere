@@ -727,8 +727,8 @@ async fn main() {
             width: 5000.0,
             height: 5000.0,
             wait_period: 15 * UPDATE_RATE as u16, // todo: config files
-            play_period: 10 * UPDATE_RATE as u16,
-            strategy_period: 10 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
+            play_period: 20 * UPDATE_RATE as u16,
+            strategy_period: 40 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
             max_player_slots: 1000,
             min_player_slots: 1
         })
