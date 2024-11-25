@@ -713,7 +713,7 @@ async fn main() {
         })
         .insert_resource(GameState {
             playing : false,
-            io : false,
+            io : true,
             strategy : false,
             tick : 0,
             time_in_stage : 0,

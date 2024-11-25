@@ -311,7 +311,7 @@ impl State {
             hovered : None,
             hovered_anything : None,
             updating_node : None,
-            piecepicker : None,
+            piecepicker : Some(PieceType::Castle),
             lasers : vec![],
             explosions : vec![],
             gun_states : HashMap::new()
@@ -356,73 +356,75 @@ impl State {
             };
             let wh = obj.tp.shape().to_bbox();
             ctx_draw_image(resource, obj.x, obj.y, obj.a, wh.0, wh.1);
-            let mut running_x = obj.x;
-            let mut running_y = obj.y;
-            ctx_stroke(1.0, "white");
-            if obj.tp.user_movable() {
-                for node in obj.path_iter() {
-                    let (x, y) = match node {
-                        PathNode::StraightTo(x, y) => {
-                            (x, y)
-                        },
-                        PathNode::Target(piece) => {
-                            if let Some(piece) = self.object_data.get(&piece) {
-                                (piece.x, piece.y)
-                            }
-                            else {
+            if obj.tp.user_movable() && obj.owner == self.id {
+                let mut running_x = obj.x;
+                let mut running_y = obj.y;
+                ctx_stroke(1.0, "white");
+                if obj.tp.user_movable() {
+                    for node in obj.path_iter() {
+                        let (x, y) = match node {
+                            PathNode::StraightTo(x, y) => {
+                                (x, y)
+                            },
+                            PathNode::Target(piece) => {
+                                if let Some(piece) = self.object_data.get(&piece) {
+                                    (piece.x, piece.y)
+                                }
+                                else {
+                                    (running_x, running_y)
+                                }
+                            },
+                            PathNode::Rotation(a, _) => {
+                                ctx_draw_image("rotation_arrow.svg", running_x, running_y, a, 30.0, 30.0);
                                 (running_x, running_y)
                             }
-                        },
-                        PathNode::Rotation(a, _) => {
-                            ctx_draw_image("rotation_arrow.svg", running_x, running_y, a, 30.0, 30.0);
-                            (running_x, running_y)
+                        };
+                        ctx_fill("white");
+                        ctx_fill_circle(x, y, 1.0);
+                        if running_x != x || running_y != y {
+                            ctx_line_between(running_x, running_y, x, y);
                         }
-                    };
-                    ctx_fill("white");
-                    ctx_fill_circle(x, y, 1.0);
-                    if running_x != x || running_y != y {
-                        ctx_line_between(running_x, running_y, x, y);
+                        running_x = x;
+                        running_y = y;
                     }
-                    running_x = x;
-                    running_y = y;
                 }
-            }
 
-            let dx = self.inputs.mouse_x - obj.x;
-            let dy = self.inputs.mouse_y - obj.y;
+                let dx = self.inputs.mouse_x - obj.x;
+                let dy = self.inputs.mouse_y - obj.y;
 
-            if dx * dx + dy * dy < 6.0 * 6.0 && obj.tp.user_movable() {
-                if obj.owner == self.id {
-                    self.hovered = Some(obj.id);
+                if dx * dx + dy * dy < 6.0 * 6.0 && obj.tp.user_movable() {
+                    if obj.owner == self.id {
+                        self.hovered = Some(obj.id);
+                    }
+                    self.hovered_anything = Some(obj.id);
                 }
-                self.hovered_anything = Some(obj.id);
-            }
-            if self.active_piece == Some(obj.id) {
-                ctx_stroke(2.0, "white");
-                ctx_outline_circle(running_x, running_y, 5.0);
-                let dx = self.inputs.mouse_x - running_x;
-                let dy = self.inputs.mouse_y - running_y;
-            }
-            if self.inputs.key("r") {
-                if let None = self.updating_node {
-                    if self.active_piece == Some(obj.id) {
-                        let dura = (((dx * dx + dy * dy).sqrt() * 0.16) as u16).min(100);
-                        let node = PathNode::Rotation(dy.atan2(dx), dura);
-                        if let Some(PathNode::Rotation(r, dur)) = obj.path.get_last() {
-                            let ind = obj.path.len().unwrap() - 1;
-                            steal_mut(&obj.path).update_node(ind, node);
-                            send(ClientMessage::StrategySet { piece : obj.id, index : ind, node });
-                        }
-                        else {
-                            steal_mut(obj).extend_path(node);
+                if self.active_piece == Some(obj.id) {
+                    ctx_stroke(2.0, "white");
+                    ctx_outline_circle(running_x, running_y, 5.0);
+                    let dx = self.inputs.mouse_x - running_x;
+                    let dy = self.inputs.mouse_y - running_y;
+                }
+                if self.inputs.key("r") {
+                    if let None = self.updating_node {
+                        if self.active_piece == Some(obj.id) {
+                            let dura = (((dx * dx + dy * dy).sqrt() * 0.16) as u16).min(100);
+                            let node = PathNode::Rotation(dy.atan2(dx), dura);
+                            if let Some(PathNode::Rotation(r, dur)) = obj.path.get_last() {
+                                let ind = obj.path.len().unwrap() - 1;
+                                steal_mut(&obj.path).update_node(ind, node);
+                                send(ClientMessage::StrategySet { piece : obj.id, index : ind, node });
+                            }
+                            else {
+                                steal_mut(obj).extend_path(node);
+                            }
                         }
                     }
                 }
-            }
-            if obj.tp.show_field() {
-                if let Some(field) = obj.tp.field() {
-                    ctx_stroke(1.0, "white");
-                    ctx_outline_circle(obj.x, obj.y, field);
+                if obj.tp.show_field() {
+                    if let Some(field) = obj.tp.field() {
+                        ctx_stroke(1.0, "white");
+                        ctx_outline_circle(obj.x, obj.y, field);
+                    }
                 }
             }
         }
@@ -618,6 +620,7 @@ impl State {
             // TODO: check territory stuff
             self.place(PieceType::Castle);
             self.has_placed = true;
+            self.piecepicker = None;
         }
     }
 

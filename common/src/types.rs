@@ -276,6 +276,9 @@ impl PieceType {
         if let Some(sensor) = self.sensor() {
             return Some(sensor);
         }
+        if let PieceType::Castle = *self {
+            return Some(600.0);
+        }
         None
     }
 
