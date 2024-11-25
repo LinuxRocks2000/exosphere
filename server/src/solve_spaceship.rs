@@ -19,6 +19,7 @@ use bevy::math::f32::Vec2;
 use std::f32::consts::PI;
 use common::pathfollower::PathNode;
 use common::PieceId;
+use common::types::*;
 
 
 // the quintessential point-a to point-b linear space maneuver, but stateless
@@ -126,7 +127,7 @@ pub trait SpaceshipKinematics {
     }
 
     // a sensor attached to this thing has collided with an enemy piece!
-    fn sensor_tripped(&mut self, _thing : PieceId) {
+    fn sensor_tripped(&mut self, _thing : PieceId, _tp : PieceType) {
 
     }
 

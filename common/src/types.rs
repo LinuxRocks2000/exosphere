@@ -69,7 +69,7 @@ pub enum PieceType {
     LaserNode, // impl
     BasicTurret, // impl
     LaserNodeLR, // impl
-    SmartTurret, // todo
+    SmartTurret, // impl
     BlastTurret, // todo
     LaserTurret, // todo
     EmpZone // todo
@@ -284,6 +284,13 @@ impl PieceType {
             Self::Farmhouse => true, // some types have overrides for fields drawn on GPU, this is just the ones drawn on CPU
             Self::BasicTurret => true,
             Self::SmartTurret => true,
+            _ => false
+        }
+    }
+
+    pub fn supports_target_control(&self) -> bool {
+        match self {
+            Self::TrackingMissile => true,
             _ => false
         }
     }

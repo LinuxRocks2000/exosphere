@@ -43,6 +43,8 @@ body > * {
     left: 50%;
     transform: translate(-50%, -50%);
     display: inline-block;
+    color: white;
+    background-color: black;
 }
 
 #waitscreen {

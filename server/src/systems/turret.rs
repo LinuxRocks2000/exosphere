@@ -18,7 +18,7 @@ use crate::solve_spaceship::*;
 use crate::events::*;
 
 
-pub fn turrets(mut turrets : Query<(Entity, &mut Turret, &GamePiece, &mut ExternalImpulse, &Transform, &Velocity)>, pieces : Query<(&GamePiece, &Transform, &Velocity, &Collider)>) {
+pub fn turrets(mut turrets : Query<(&mut Turret, &GamePiece, &mut ExternalImpulse, &Transform, &Velocity)>, pieces : Query<(&GamePiece, &Transform, &Velocity, &Collider)>) {
     for (mut turret, turret_piece, mut impulse, turret_pos, turret_velocity) in turrets.iter_mut() {
         for i in 0..turret.in_range.len() {
             if let Ok((piece, position, velocity, collider)) = pieces.get(turret.in_range[i]) {

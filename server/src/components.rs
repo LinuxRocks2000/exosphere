@@ -26,6 +26,7 @@ use crate::solve_spaceship::*;
 use std::f32::consts::PI;
 use std::sync::Arc;
 use std::sync::RwLock;
+use common::pathfollower::*;
 
 
 #[derive(Component)]
@@ -399,7 +400,7 @@ impl SpaceshipKinematics for Ship {
 
 impl SpaceshipKinematics for Missile {
     fn to_position(&mut self, offset : Vec2, angle : f32, vel : Vec2, angvel : f32) -> KinematicResult {
-        if offset.length() < self.intercept_burn { // if we're in intercept strike mode
+        if offset.length() > 0.001 && offset.length() < self.intercept_burn { // if we're in intercept strike mode
             let mut impulse = Vec2::from_angle(angle) * self.intercept_burn_power;
             impulse -= vel.project_onto(offset.perp()) * 0.2;
             KinematicResult::Thrust(impulse, -loopify(offset.to_angle(), vel.to_angle()) * 200.0 - angvel * 200.0)
@@ -416,6 +417,26 @@ impl SpaceshipKinematics for Missile {
 
     fn to_angle(&mut self, _offset : f32, _vel : Vec2, _angvel : f32) -> KinematicResult {
         KinematicResult::Done(Vec2::ZERO, 0.0) // missiles don't do the angles thing
+    }
+
+    fn node_override(&mut self) -> Option<PathNode> {
+        match self.target_lock {
+            Some(target) => Some(PathNode::Target(target)),
+            None => None
+        }
+    }
+
+    fn override_complete(&mut self) {
+        self.target_lock = None;
+    }
+
+    fn sensor_tripped(&mut self, thing : PieceId, tp : PieceType) {
+        match tp {
+            PieceType::Bullet => {}
+            _ => {
+                self.target_lock = Some(thing);
+            }
+        }
     }
 }
 
@@ -435,8 +456,8 @@ impl Spaceshipoid {
         }
     }
 
-    pub fn sensor_tripped(&mut self, thing : PieceId) {
-        self.kinematics.sensor_tripped(thing);
+    pub fn sensor_tripped(&mut self, thing : PieceId, tp : PieceType) {
+        self.kinematics.sensor_tripped(thing, tp);
     }
 }
 

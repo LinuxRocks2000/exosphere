@@ -146,7 +146,7 @@ pub fn handle_collisions(mut collision_events: EventReader<CollisionEvent>,
                     if gamepiece.owner != sensor_owner && (gamepiece.slot != sensor_slot || gamepiece.slot == 1) { // check if the piece is enemy or not
                         if sensor.attached_to != entity { // missiles can't attempt to attack themselves
                             if let Ok(mut shipoid) = spaceshipoids.get_mut(sensor.attached_to) {       
-                                shipoid.sensor_tripped(entity.into());
+                                shipoid.sensor_tripped(entity.into(), gamepiece.tp);
                             }
                         }
                     }

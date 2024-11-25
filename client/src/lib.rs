@@ -188,10 +188,12 @@ struct State {
     fabber_buf : Vec<f32>,
     active_piece : Option<PieceId>,
     hovered : Option<PieceId>,
+    hovered_anything : Option<PieceId>,
     updating_node : Option<(PieceId, u16)>,
     piecepicker : Option<PieceType>,
     lasers : Vec<Laser>,
-    explosions : Vec<Explosion>
+    explosions : Vec<Explosion>,
+    gun_states : HashMap<PieceId, bool>
 }
 
 
@@ -307,10 +309,12 @@ impl State {
             fabber_buf : vec![],
             active_piece : None,
             hovered : None,
+            hovered_anything : None,
             updating_node : None,
             piecepicker : None,
             lasers : vec![],
-            explosions : vec![]
+            explosions : vec![],
+            gun_states : HashMap::new()
         }
     }
 
@@ -341,6 +345,7 @@ impl State {
         }
         self.overlay();
         self.hovered = None;
+        self.hovered_anything = None;
         for obj in self.object_data.values() {
             let asset = obj.tp.asset();
             let resource = if self.is_friendly(obj.owner) {
@@ -386,8 +391,11 @@ impl State {
             let dx = self.inputs.mouse_x - obj.x;
             let dy = self.inputs.mouse_y - obj.y;
 
-            if dx * dx + dy * dy < 6.0 * 6.0 && obj.tp.user_movable() && obj.owner == self.id {
-                self.hovered = Some(obj.id);
+            if dx * dx + dy * dy < 6.0 * 6.0 && obj.tp.user_movable() {
+                if obj.owner == self.id {
+                    self.hovered = Some(obj.id);
+                }
+                self.hovered_anything = Some(obj.id);
             }
             if self.active_piece == Some(obj.id) {
                 ctx_stroke(2.0, "white");
@@ -511,6 +519,13 @@ impl State {
                         }
                     }
                 }
+                else if self.hovered_anything.is_some() && self.active_piece.is_some() {
+                    if let Some(mut piece) = self.object_data.get_mut(&self.active_piece.unwrap()) {
+                        if piece.tp.supports_target_control() {
+                            piece.extend_path(PathNode::Target(self.hovered_anything.unwrap()));
+                        }
+                    }
+                }
                 else if let None = self.hovered { // if we aren't hovering anything new, create a path node
                     // first up: check if this click might extend a pre-existing path
                     let mx = self.inputs.mouse_x;
@@ -618,6 +633,18 @@ impl State {
     pub fn key_up(&mut self, key : String) {
         if key == "Escape" {
             self.active_piece = None;
+        }
+        if let Some(piece) = self.active_piece {
+            if key == "g" {
+                if let Some(mut state) = self.gun_states.get_mut(&piece) {
+                    *state = !(*state);
+                    send(ClientMessage::GunState { piece, enabled : *state });
+                }
+                else {
+                    self.gun_states.insert(piece, true);
+                    send(ClientMessage::GunState { piece, enabled : true });
+                }
+            }
         }
         self.inputs.keys_down.insert(key, false);
     }
