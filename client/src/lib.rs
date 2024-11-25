@@ -63,7 +63,7 @@ extern "C" {
     fn ctx_draw_image(resource : &str, x : f32, y : f32, a : f32, w : f32, h : f32); // draw an image at a given position and angle
     fn ctx_line_between(x1 : f32, y1 : f32, x2 : f32, y2 : f32);
     fn setup_placemenu_row(index : usize);
-    fn add_placemenu_item(row : usize, item : u16, img : &str);
+    fn add_placemenu_item(row : usize, item : u16, img : &str, name : &str, desc : &str, cost : u32);
     fn clear_piecepicker();
     fn ctx_alpha(alpha : f32);
 }
@@ -280,7 +280,7 @@ impl State {
         for row in 0..PLACE_MENU.len() {
             setup_placemenu_row(row);
             for item in PLACE_MENU[row] {
-                add_placemenu_item(row, *item as u16, item.asset().to_friendly());
+                add_placemenu_item(row, *item as u16, item.asset().to_friendly(), item.name(), item.description(), item.price());
             }
         }
         Self {

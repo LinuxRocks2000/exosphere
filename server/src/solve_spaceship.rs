@@ -34,11 +34,10 @@ use common::types::*;
 pub fn linear_maneuvre(delta : Vec2, current_velocity : Vec2, cap_speed : f32, nominal_acceleration : f32) -> f32 {
     let decel_time = current_velocity.length() / nominal_acceleration;
     let decel_dist = 0.5 * nominal_acceleration * decel_time * decel_time; // second integral of acceleration = position = p(t) = 1/2 * nominal_acceleration * t^2
-    // t = decel_time
-    /*if (delta - current_velocity).length() > delta.length() {
-        return nominal_acceleration;
-    }
-    else */if delta.length() <= decel_dist {
+    if delta.length() <= decel_dist {
+        if current_velocity.project_onto(delta).angle_between(delta).abs() > 0.001 {
+            return nominal_acceleration; // if we're moving backwards, we *always* want to start moving forwards again
+        }
         return -1.0 * nominal_acceleration;
     }
     else if current_velocity.length() < cap_speed {

@@ -113,7 +113,7 @@ export function setup_placemenu_row(index) {
     document.getElementById("buyshipmenu").appendChild(el);
 }
 
-export function add_placemenu_item(row, id, asset) {
+export function add_placemenu_item(row, id, asset, name, description, cost) {
     let el = document.createElement("div");
     let inp = document.createElement("input");
     inp.className = "picker_radio";
@@ -141,7 +141,11 @@ export function add_placemenu_item(row, id, asset) {
         if (inp.checked) {
             requestAnimationFrame(clear_piecepicker);
         }
-    })
+    });
+    let dbar = document.createElement("div");
+    dbar.innerHTML = `<div><b>${name}</b><br>${description}</div><div>$${cost}</div>`;
+    dbar.classList.add("dbar");
+    el.appendChild(dbar);
 }
 
 export function clear_piecepicker() {

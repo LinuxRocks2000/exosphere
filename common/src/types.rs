@@ -145,7 +145,7 @@ impl PieceType {
             Self::Battleship => 200,
             Self::Seed => 5,
             Self::BallisticMissile => 5,
-            Self::Farmhouse => 70,
+            Self::Farmhouse => 30,
             Self::SeekingMissile => 10,
             Self::HypersonicMissile => 20,
             Self::TrackingMissile => 30,
@@ -295,6 +295,62 @@ impl PieceType {
         match self {
             Self::TrackingMissile => true,
             _ => false
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::BasicFighter => "Basic Fighter",
+            Self::Bullet => "Bullet",
+            Self::Castle => "Castle",
+            Self::TieFighter => "Tie Fighter",
+            Self::Sniper => "Sniper",
+            Self::DemolitionCruiser => "Demolition Cruiser",
+            Self::Battleship => "Battleship",
+            Self::SmallBomb => "Small Bomb",
+            Self::Seed => "Seed",
+            Self::Chest => "Chest",
+            Self::Farmhouse => "Farmhouse",
+            Self::BallisticMissile => "Ballistic Missile",
+            Self::FleetDefenseShip => "Fleet Defense Ship",
+            Self::SeekingMissile => "Seeking Missile",
+            Self::HypersonicMissile => "Hypersonic Missile",
+            Self::TrackingMissile => "Tracking Missile",
+            Self::CruiseMissile => "Cruise Missile",
+            Self::LaserNode => "Small Laser Node",
+            Self::ScrapShip => "Scrap Ship",
+            Self::LaserNodeLR => "Large Laser Node",
+            Self::BasicTurret => "Basic Turret",
+            Self::SmartTurret => "Smart Turret",
+            _ => ""
+        }
+    }
+
+    pub fn description(&self) -> &'static str { // get an html description of this piece
+        match self {
+            Self::BasicFighter => "Slow ship that fires short-range bullets at a moderate interval",
+            Self::Bullet => "A bullet!",
+            Self::Castle => "A castle!",
+            Self::TieFighter => "Slow ship that fires repeating bullets at a moderate interval",
+            Self::Sniper => "Fast ship that fires long-range bullets at a long interval",
+            Self::DemolitionCruiser => "Slow ship that fires small bombs",
+            Self::Battleship => "why the hell did I make this",
+            Self::SmallBomb => "A little bomb!",
+            Self::Seed => "Static piece that matures into a Chest after one hundred ticks in the radius of a farm field",
+            Self::Chest => "Static piece that grants whichever player kills it 20 coins",
+            Self::Farmhouse => "Farmhouse that produces a small farm field in which seeds can be grown into chests",
+            Self::BallisticMissile => "Cheap kinetic missile",
+            Self::FleetDefenseShip => "unimplemented",
+            Self::SeekingMissile => "Kinetic missile that locks onto the first enemy piece it detects",
+            Self::HypersonicMissile => "Fast missile with a low-yield warhead",
+            Self::TrackingMissile => "Slow missile with a low-yield warhead that can be manually onto enemy pieces",
+            Self::CruiseMissile => "Slow missile with a high-yield warhead",
+            Self::LaserNode => "Small laser node that creates laser walls to nearby laser nodes",
+            Self::ScrapShip => "Slow, weak ship that fires laser at nearby chests to collect the $20",
+            Self::LaserNodeLR => "Long range laser mnode that creates laser walls to nearby laser nodes",
+            Self::BasicTurret => "Automatically swivelling turret that fires bullets at enemies in range",
+            Self::SmartTurret => "Automatically swivelling turret that fires bullets at enemies in range, with much better aim",
+            _ => ""
         }
     }
 }

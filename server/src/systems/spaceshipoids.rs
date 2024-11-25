@@ -65,5 +65,8 @@ pub fn move_spaceshipoids(mut shipoids : Query<(&mut ExternalImpulse, &Velocity,
                 KinematicResult::Noop => {}
             }
         }
+        if impulse.impulse.length() > 300000.0 {
+            impulse.impulse = Vec2::ZERO;
+        }
     }
 }

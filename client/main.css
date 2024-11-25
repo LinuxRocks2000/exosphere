@@ -97,6 +97,25 @@ body > * {
     background-color: pink;
 }
 
+.dbar {
+    position: fixed;
+    bottom: 0px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 80vw;
+    display: none;
+    background-color: white;
+}
+
+.dbar > * {
+    padding: 10px;
+}
+
+#buyshipmenu > div > div:hover > .dbar {
+    display: flex;
+}
+
 #buyshipmenu label > img {
     max-width: 30px;
     max-height: 30px;
@@ -121,3 +140,4 @@ body > * {
     color: white;
     font-weight: bold;
 }
+
