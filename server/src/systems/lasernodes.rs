@@ -11,27 +11,37 @@
 */
 
 // lasernode handler system
-
+use rayon::prelude::*;
 use crate::components::*;
 use crate::events::*;
 use bevy::prelude::*;
 use common::types::*;
 
-
 // cast lasers between nodes
 pub fn lasernodes(lasernodes : Query<(Entity, &GamePiece, &LaserNode, &Transform)>, mut laser_cast : EventWriter<LaserCastEvent>) {
-    for (entity, _, node, position) in lasernodes.iter() {
-        for x in 0..node.allowable.min(node.slots.read().unwrap().len()) {
-            if let Ok((_, opiece, _, otherposition)) = lasernodes.get(*node.slots.read().unwrap().get(x).unwrap()) {
+    lasernodes.par_iter().for_each(|(entity, _, node, position)| {
+        let slots = node.slots.read().unwrap();
+        let slot_count = slots.len().min(node.allowable);
+
+        for i in 0..slot_count {
+            if let Ok((_, other_piece, _, other_position)) = lasernodes.get(slots[i]) {
+                let direction = (other_position.translation - position.translation).truncate().normalize();
+                let distance = (other_position.translation - position.translation).length();
+                let max_dist = distance - match other_piece.tp {
+                    PieceType::LaserNode => 12.0,
+                    PieceType::LaserNodeLR => 23.0,
+                    _ => 0.0,
+                }.max(0.0);
+
                 laser_cast.send(LaserCastEvent {
-                    caster : entity,
-                    from : position.translation.truncate(),
-                    dir : (otherposition.translation - position.translation).truncate().normalize(),
-                    max_dist : ((otherposition.translation - position.translation).length() - match opiece.tp { PieceType::LaserNode => 12.0, PieceType::LaserNodeLR => 23.0, _ => 0.0 }).max(0.0),
-                    dmg : 1.0,
-                    exclusive : None
+                    caster: entity,
+                    from: position.translation.truncate(),
+                    dir: direction,
+                    max_dist,
+                    dmg: 1.0,
+                    exclusive: None,
                 });
             }
         }
-    }
+    });
 }
