@@ -104,11 +104,16 @@ pub fn client_tick(mut commands : Commands, mut pieces : Query<(Entity, &GamePie
                                                     clients.get_mut(&id).unwrap().collect(100);
                                                     let slot = clients[&id].slot;
                                                     place.castle(x, y, id, slot);
-                                                    place.basic_fighter_free(x - 200.0, y, PI, id, slot);
+                                                    /*place.basic_fighter_free(x - 200.0, y, PI, id, slot);
                                                     place.basic_fighter_free(x + 200.0, y, 0.0, id, slot);
                                                     place.basic_fighter_free(x, y - 200.0, 0.0, id, slot);
                                                     place.basic_fighter_free(x, y + 200.0, 0.0, id, slot);
-                                                    place.p_simple(x + 200.0, y + 200.0, id, slot, common::types::PieceType::Sniper);
+*/
+                                                    for dx in 0..7 {
+                                                        for dy in 0..7 {
+                                                            place.small_lasernode_free(x + 200.0 + dx as f32 * 20.0, y + 200.0 + dy as f32 * 20.0, id, slot);
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }

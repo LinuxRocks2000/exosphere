@@ -36,7 +36,6 @@ use bevy::ecs::schedule::ScheduleLabel;
 use rand::Rng;
 use std::collections::HashMap;
 
-use common::protocol::*;
 use common::types::*;
 use common::VERSION;
 use common::PlayerId;
@@ -249,6 +248,16 @@ impl Placer<'_> {
         });
     }
 
+    fn small_lasernode_free(&mut self, x : f32, y : f32, client : PlayerId, slot : u8) {
+        self.0.send(PlaceEvent {
+            x, y, a : 0.0,
+            owner : client,
+            slot,
+            tp : PieceType::LaserNode,
+            free : true
+        });
+    }
+
     fn chest_free(&mut self, x : f32, y : f32) {
         self.0.send(PlaceEvent {
             x, y, a : 0.0,
@@ -285,69 +294,6 @@ fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &Explosi
         commands.entity(entity).despawn();
     }
 }
-
-/*
-fn move_missiles(mut missiles : Query<(Entity, &mut ExternalImpulse, &Velocity, &Transform, &mut Missile, &mut PathFollower, &Collider, &GamePiece)>, targetables : Query<&Transform>, targets : Query<&Transform>, mut clients : ResMut<ClientMap>) {
-    for (entity, mut impulse, velocity, transform, mut missile, mut follower, collider, piece) in missiles.iter_mut() {
-        if let Some(next) = follower.get_next() {
-            let mut gpos = match next {
-                PathNode::StraightTo(x, y) => Vec2 { x, y },
-                PathNode::Target(ent) => {
-                    if let Ok(tg) = targetables.get(ent) {
-                        tg.translation.truncate()
-                    }
-                    else {
-                        follower.bump();
-                        continue;
-                    }
-                }
-            };
-            if let Some(lock) = missile.target_lock {
-                if let Ok(target) = targets.get(lock) {
-                    gpos = target.translation.truncate();
-                }
-                else {
-                    println!("target eliminated");
-                    missile.target_lock = None;
-                }
-            }
-            let cpos = transform.translation.truncate();
-            let inv_mass = collider.raw.mass_properties(1.0).inv_mass;
-            let cangle = transform.rotation.to_euler(EulerRot::ZYX).0;
-            let delta = (gpos - cpos).length();
-            if delta > 30.0 {
-                if delta < missile.intercept_burn {
-                    impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.intercept_burn_power;
-                    impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.2; // linear deviation correction thrusters
-                    impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 200.0 / inv_mass - velocity.angvel / inv_mass * 200.0;
-                }
-                else {
-                    impulse.impulse = Vec2::from_angle(cangle) / inv_mass * missile.acc_profile - velocity.linvel / inv_mass * missile.decelerator;
-                    impulse.impulse -= velocity.linvel.project_onto((gpos - cpos).perp()) / inv_mass * 0.05; // linear deviation correction thrusters
-                    impulse.torque_impulse = -loopify((gpos - cpos).to_angle(), velocity.linvel.to_angle()) * 50.0 / inv_mass - velocity.angvel / inv_mass * 30.0;
-                }
-                //force.force = Vec2::from_angle(cangle) * (linear_maneuvre(cpos, gpos, velocity.linvel, ship.speed * 50.0, 250.0) / inv_mass);
-                // this can produce odd effects at close approach, hence the normalizer code
-                //println!("cangle: {}, gangle: {}, angvel: {}", cangle, (cpos - gpos).to_angle(), velocity.angvel);
-            }
-            else {
-                if follower.bump() {
-                    if let Some(client) = clients.get_mut(&piece.owner) {
-                        client.send(ServerMessage::StrategyCompletion { id : entity.index(), remaining : follower.len() });
-                    }
-                }
-                else {
-                    match follower.get_endcap() {
-                        EndNode::Rotation(r) => {
-                            impulse.torque_impulse = (-loopify(r, cangle) * 10.0 - velocity.angvel * 2.0) / inv_mass * 40.0;
-                        }
-                        EndNode::None => {}
-                    }
-                }
-            }
-        }
-    }
-}*/
 
 
 fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform, Option<&Territory>, Option<&Fabber>)>) {
@@ -554,8 +500,10 @@ fn setup_board(mut commands : Commands, config : Res<GameConfig>) { // set up th
 async fn main() {
     let top_id = Arc::new(Mutex::new(1_u64)); // POSSIBLE BUG: if the client id goes beyond 18,446,744,073,709,551,615, it may overflow and assign duplicate IDs
     // this is not likely to be a real problem
-    let (to_bevy_tx, to_bevy_rx) = mpsc::channel::<Comms>(128);
-    let (from_bevy_broadcast_tx, _) = broadcast::channel::<ServerMessage>(128);
+    // [2025-5-6] yeah no shit
+    //            Old Me comments are pretty dumb :pensive:
+    let (to_bevy_tx, to_bevy_rx) = mpsc::channel::<Comms>(1024);
+    let (from_bevy_broadcast_tx, _) = broadcast::channel::<ServerMessage>(1024);
     let bevy_broadcast_tx_cloner = from_bevy_broadcast_tx.clone();
     let websocket = warp::path("game")
         .and(warp::ws())
@@ -575,7 +523,7 @@ async fn main() {
                 *topid += 1;
                 drop(topid);
                 let (mut client_tx, mut client_rx) = client.split();
-                let (from_bevy_tx, mut from_bevy_rx) = tokio::sync::mpsc::channel(128);
+                let (from_bevy_tx, mut from_bevy_rx) = tokio::sync::mpsc::channel(1024);
                 let mut me_verified = false;
                 let mut cl = Some(Client {
                     has_placed_castle : false,
@@ -587,7 +535,7 @@ async fn main() {
                     money : 0,
                     connected : false
                 });
-                if let Err(_) = client_tx.send(warp::ws::Message::binary(ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION).encode().unwrap())).await {
+                if let Err(_) = client_tx.send(warp::ws::Message::binary(bitcode::encode(&ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION)))).await {
                     println!("client disconnected before handshake");
                     return;
                 }
@@ -598,7 +546,7 @@ async fn main() {
                                 Some(msg) => {
                                     if let Ok(msg) = msg {
                                         if msg.is_binary() {
-                                            if let Ok(frame) = ClientMessage::decode(&msg.as_bytes()) {
+                                            if let Ok(frame) = bitcode::decode::<ClientMessage>(&msg.as_bytes()) {
                                                 if me_verified {
                                                     if let Err(_) = to_bevy.send(Comms::MessageFrom(my_id, frame)).await {
                                                         println!("channel failure 1: lost connection to game engine");
@@ -648,7 +596,7 @@ async fn main() {
                         msg = from_bevy_rx.recv() => {
                             match msg {
                                 Some(msg) => {
-                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(msg.encode().unwrap())).await {
+                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(bitcode::encode(&msg))).await {
                                         println!("channel failure 4");
                                         break 'cli_loop;
                                     }
@@ -666,7 +614,7 @@ async fn main() {
                         msg = from_bevy_broadcast.recv() => {
                             match msg {
                                 Ok(msg) => {
-                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(msg.encode().unwrap())).await {
+                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(bitcode::encode(&msg))).await {
                                         println!("channel failure 6");
                                         break 'cli_loop;
                                     }
@@ -700,7 +648,9 @@ async fn main() {
         .add_systems(
             PlaySchedule,
             (
-                move_spaceshipoids, shoot, ttl, seed_mature, handle_collisions
+                move_spaceshipoids, shoot, ttl, seed_mature, handle_collisions,
+                lasernodes, lasers,
+                scrapships, turrets,
             )
         )
         .init_schedule(PlaySchedule)
@@ -719,7 +669,7 @@ async fn main() {
         .add_event::<PieceDestroyedEvent>()
         .add_event::<LaserCastEvent>()
         .insert_resource(config)
-        .insert_resource(ClientMap(HashMap::new()))
+        .insert_resource(ClientMap(HashMap::new())) // -225, -39.5, -516.9
         .add_plugins(bevy_time::TimePlugin)
         .insert_resource(Receiver(to_bevy_rx))
         .insert_resource(Sender(from_bevy_broadcast_tx))
@@ -728,7 +678,7 @@ async fn main() {
             height: 5000.0,
             wait_period: 5 * UPDATE_RATE as u16, // todo: config files
             play_period: 20 * UPDATE_RATE as u16,
-            strategy_period: 40 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
+            strategy_period: 5 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
             max_player_slots: 1000,
             min_player_slots: 1
         })
@@ -750,8 +700,6 @@ async fn main() {
             on_piece_dead.after(handle_collisions).after(ttl).after(seed_mature),
             update_field_sensors,
             client_health_check,
-            lasernodes, lasers,
-            scrapships, turrets,
         )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, (setup, setup_board))
         .set_runner(|mut app| {

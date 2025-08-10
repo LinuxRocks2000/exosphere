@@ -5,8 +5,7 @@ edition = "2021"
 
 [dependencies]
 
-serde = "*"
-serde_derive = "*"
+bitcode = "*"
 num-derive = "*"
 num-traits = "*"
 bevy = { version = "0.14.0", features = ["trace"], optional = true }

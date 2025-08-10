@@ -42,11 +42,11 @@ use num_derive::FromPrimitive;
 use crate::fab::FabLevels;
 #[cfg(feature = "server")]
 use bevy_rapier2d::prelude::Collider;
-use serde_derive::{ Serialize, Deserialize };
+use bitcode::{Encode, Decode};
 
 
 #[repr(u16)]
-#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive, Encode, Decode)]
 pub enum PieceType {
     BasicFighter, // impl
     Castle, // impl

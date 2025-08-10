@@ -17,7 +17,6 @@ use common::VERSION;
 use common::types::Asset;
 use std::collections::HashMap;
 use common::pathfollower::{ PathFollower, PathIter, PathNode };
-use common::protocol::{ ProtocolSerialize, ProtocolDeserialize };
 use common::{ PieceId, PlayerId };
 use common::steal_mut;
 use num_traits::cast::FromPrimitive;
@@ -70,7 +69,7 @@ extern "C" {
 
 
 fn send(message : ClientMessage) {
-    send_ws(message.encode().unwrap());
+    send_ws(bitcode::encode(&message));
 }
 
 
@@ -461,7 +460,7 @@ impl State {
                         }
                     }
                 }
-                else if self.inputs.key("d") {
+                else if self.inputs.key("Backspace") {
                     if let Some(mut piece) = self.object_data.get_mut(&id) {
                         if let Some(PathNode::Rotation(_, _)) = piece.path.get(index as usize + 1) {
                             piece.delete_strategy(index + 1);
@@ -640,6 +639,8 @@ impl State {
     pub fn key_up(&mut self, key : String) {
         if key == "Escape" {
             self.active_piece = None;
+            clear_piecepicker();
+            self.piecepicker = None;
         }
         if let Some(piece) = self.active_piece {
             if key == "g" {
@@ -665,126 +666,121 @@ impl State {
     }
 
     pub fn on_message(&mut self, message : Vec<u8>) {
-        let message = ServerMessage::decode(&message);
-        if let Ok(ref msg) = message {
-            if self.has_tested {
-                match msg {
-                    ServerMessage::Metadata { id, board_width, board_height, slot } => {
-                        self.gameboard_width = *board_width;
-                        self.gameboard_height = *board_height;
-                        self.id = *id;
-                        self.slot = *slot;
-                        set_board_size(*board_width, *board_height);
-                    },
-                    ServerMessage::GameState { stage, stage_duration, tick_in_stage } => {
-                        self.tick = *tick_in_stage;
-                        self.stage_duration = *stage_duration;
-                        self.stage = *stage;
-                        self.global_tick += 1;
-                        set_time(*tick_in_stage, *stage_duration, stage.get_str());
-                    },
-                    ServerMessage::PlayerData { id, nickname, slot } => {
-                        self.player_data.insert(*id, PlayerData {
-                            id : *id,
-                            name : nickname.clone(),
-                            slot : *slot,
-                            money : 0
-                        });
-                    },
-                    ServerMessage::Money { id, amount } => {
-                        if let Some(player) = self.player_data.get_mut(id) {
-                            player.money = *amount;
-                        }
-                        if self.id == *id {
-                            self.money = *amount;
-                            set_money(*amount);
-                        }
-                    },
-                    ServerMessage::Territory { id, radius } => {
-                        self.territory_data.insert(*id, TerritoryData {
-                            radius : *radius
-                        });
-                    },
-                    ServerMessage::Fabber { id, radius } => {
-                        self.fabber_data.insert(*id, FabberData {
-                            radius : *radius
-                        });
-                    },
-                    ServerMessage::ObjectCreate { x, y, a, owner, id, tp } => {
-                        self.object_data.insert(*id, ObjectData {
-                            x : *x,
-                            y : *y,
-                            a : *a,
-                            owner : *owner,
-                            id : *id,
-                            tp : *tp,
-                            health : 1.0,
-                            path : PathFollower::start(*x, *y)
-                        });
-                    },
-                    ServerMessage::ObjectMove { id, x, y, a } => {
-                        if let Some(obj) = self.object_data.get_mut(&id) {
-                            obj.x = *x;
-                            obj.y = *y;
-                            obj.a = *a;
-                        }
-                    },
-                    ServerMessage::DeleteObject { id } => {
-                        self.object_data.remove(&id);
-                    },
-                    ServerMessage::Health { id, health } => {
-                        if let Some(obj) = self.object_data.get_mut(&id) {
-                            obj.health = *health;
-                        }
-                    },
-                    ServerMessage::StrategyCompletion { id, remaining } => {
-                        if let Some(mut obj) = self.object_data.get_mut(&id) {
-                            obj.path.bump().unwrap();
-                            if obj.path.len().unwrap() != *remaining {
-                                alert(&format!("error! mismatched strategy paths {} (local) vs {} (server)! attempting recovery", obj.path.len().unwrap(), *remaining));
-                                obj.path.clear();
-                                send(ClientMessage::StrategyClear { piece : *id });
-                            }
-                        }
-                    },
-                    ServerMessage::LaserCast { caster : _, from_x, from_y, to_x, to_y } => {
-                        self.lasers.push(Laser {
-                            from_x : *from_x,
-                            from_y : *from_y,
-                            to_x : *to_x,
-                            to_y : *to_y, age : 2
-                        });
-                    },
-                    ServerMessage::Explosion { x, y, radius, damage : _ } => {
-                        self.explosions.push(Explosion {
-                            x : *x,
-                            y : *y,
-                            rad : *radius,
-                            age : 2
-                        });
-                    },
-                    _ => {
-                        alert(&format!("bad protocol frame {:?}", msg));
+        let message : ServerMessage = bitcode::decode(&message).unwrap();
+        if self.has_tested {
+            match message {
+                ServerMessage::Metadata { id, board_width, board_height, slot } => {
+                    self.gameboard_width = board_width;
+                    self.gameboard_height = board_height;
+                    self.id = id;
+                    self.slot = slot;
+                    set_board_size(board_width, board_height);
+                },
+                ServerMessage::GameState { stage, stage_duration, tick_in_stage } => {
+                    self.tick = tick_in_stage;
+                    self.stage_duration = stage_duration;
+                    self.stage = stage;
+                    self.global_tick += 1;
+                    set_time(tick_in_stage, stage_duration, stage.get_str());
+                },
+                ServerMessage::PlayerData { id, nickname, slot } => {
+                    self.player_data.insert(id, PlayerData {
+                        id : id,
+                        name : nickname.clone(),
+                        slot : slot,
+                        money : 0
+                    });
+                },
+                ServerMessage::Money { id, amount } => {
+                    if let Some(player) = self.player_data.get_mut(&id) {
+                        player.money = amount;
                     }
-                }
-            }
-            else {
-                if let ServerMessage::Test(exostring, 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION) = msg {
-                    if exostring == "EXOSPHERE" {
-                        send(ClientMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION));
-                        send(ClientMessage::Connect {
-                            nickname : get_input_value("nickname"),
-                            password : "".to_string()
-                        });
-                        self.has_tested = true;
-                        return;
+                    if self.id == id {
+                        self.money = amount;
+                        set_money(amount);
                     }
+                },
+                ServerMessage::Territory { id, radius } => {
+                    self.territory_data.insert(id, TerritoryData {
+                        radius : radius
+                    });
+                },
+                ServerMessage::Fabber { id, radius } => {
+                    self.fabber_data.insert(id, FabberData {
+                        radius : radius
+                    });
+                },
+                ServerMessage::ObjectCreate { x, y, a, owner, id, tp } => {
+                    self.object_data.insert(id, ObjectData {
+                        x : x,
+                        y : y,
+                        a : a,
+                        owner : owner,
+                        id : id,
+                        tp : tp,
+                        health : 1.0,
+                        path : PathFollower::start(x, y)
+                    });
+                },
+                ServerMessage::ObjectMove { id, x, y, a } => {
+                    if let Some(obj) = self.object_data.get_mut(&id) {
+                        obj.x = x;
+                        obj.y = y;
+                        obj.a = a;
+                    }
+                },
+                ServerMessage::DeleteObject { id } => {
+                    self.object_data.remove(&id);
+                },
+                ServerMessage::Health { id, health } => {
+                    if let Some(obj) = self.object_data.get_mut(&id) {
+                        obj.health = health;
+                    }
+                },
+                ServerMessage::StrategyCompletion { id, remaining } => {
+                    if let Some(mut obj) = self.object_data.get_mut(&id) {
+                        obj.path.bump().unwrap();
+                        if obj.path.len().unwrap() != remaining {
+                            alert(&format!("error! mismatched strategy paths {} (local) vs {} (server)! attempting recovery", obj.path.len().unwrap(), remaining));
+                            obj.path.clear();
+                            send(ClientMessage::StrategyClear { piece : id });
+                        }
+                    }
+                },
+                ServerMessage::LaserCast { caster : _, from_x, from_y, to_x, to_y } => {
+                    self.lasers.push(Laser {
+                        from_x : from_x,
+                        from_y : from_y,
+                        to_x : to_x,
+                        to_y : to_y, age : 2
+                    });
+                },
+                ServerMessage::Explosion { x, y, radius, damage : _ } => {
+                    self.explosions.push(Explosion {
+                        x : x,
+                        y : y,
+                        rad : radius,
+                        age : 2
+                    });
+                },
+                _ => {
+                    alert(&format!("bad protocol frame {:?}", message));
                 }
-                alert(&format!("server failed verification: {:?}", message));
             }
         }
         else {
-            alert("error");
+            if let ServerMessage::Test(ref exostring, 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION) = message {
+                if exostring == "EXOSPHERE" {
+                    send(ClientMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION));
+                    send(ClientMessage::Connect {
+                        nickname : get_input_value("nickname"),
+                        password : "".to_string()
+                    });
+                    self.has_tested = true;
+                    return;
+                }
+            }
+            alert(&format!("server failed verification: {:?}", message));
         }
     }
 }

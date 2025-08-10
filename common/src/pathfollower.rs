@@ -13,11 +13,11 @@
 // the PathFollower class
 // at the moment all it does is curate a list of Nodes
 
-use serde_derive::{ Serialize, Deserialize };
+use bitcode::{Encode, Decode};
 use crate::PieceId;
 
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Encode, Decode, PartialEq)]
 pub enum PathNode {
     StraightTo(f32, f32),
     Target(PieceId),

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.14.0", features = ["dynamic_linking", "trace"] }
+bevy = { version = "0.14.0", features = ["trace"] }
 warp = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-macros = { version = "0.2.0-alpha.6" }
@@ -16,6 +16,7 @@ bevy_time = "*"
 rand = "*"
 num-traits = "*"
 num-derive = "*"
+bitcode = "*"
 
 [profile.dev]
 debug = 0
@@ -25,3 +26,6 @@ opt-level = 1 # Switch to 1 for more runtime performance
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[profile.release]
+debug = true

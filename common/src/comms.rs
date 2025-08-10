@@ -14,14 +14,14 @@
 // includes Server -> Client and Client -> Server
 // impls where applicable sorted to the bottom of the file
 
-use serde_derive::{Serialize, Deserialize};
+use bitcode::{Encode, Decode};
 use crate::pathfollower::PathNode;
 use crate::PieceId;
 use crate::PlayerId;
 use crate::types::PieceType;
 
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Encode, Decode, PartialEq)]
 pub enum ClientMessage { // client -> server
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. See ServerMessage.
     Connect { nickname : String, password : String }, // connect to the server. doesn't let you place your castle yet.
@@ -44,7 +44,7 @@ pub enum ClientMessage { // client -> server
 // this exchange prevents old, underprepared, or incompatible clients from connecting to a game.
 // If a client attempts to do anything before protocol verification, it will be kicked off the server.
 
-#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Copy, Clone, Encode, Decode, Debug, PartialEq)]
 pub enum Stage {
     Playing,
     Waiting,
@@ -63,7 +63,7 @@ impl Stage {
 }
 
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Encode, Decode, Clone)]
 pub enum ServerMessage { // server -> client
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. see above blurb.
     GameState { stage : Stage, stage_duration : u16, tick_in_stage : u16 },

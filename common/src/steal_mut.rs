@@ -41,6 +41,10 @@ pub fn steal_mut<T>(t : &T) -> &mut T {
     // RefCell et al are heavy and not particularly ergonomic. So this function exists! cheaply evade
     // static analysis at the cost of safety.
     // this better not become a habit.
+
+    // update 2025-4-30: I have no idea what the fuck I was talking about here.
+    //                   RefCell and other interior mutability systems are cheap enough that their overhead will never matter.
+    //                   This function will be kept for historical value, but of high priority is removing every use from the code.
     return unsafe {
         let raw = t as *const T;
         let even_rawer = InvarianceBreaker::new(std::mem::transmute::<*const T, usize>(raw));
