@@ -7,7 +7,7 @@
 
     Exosphere is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
+    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
 // biiiiiiiiiiiiiiiiiiiiiiiiiiiiig TODO: split this up into a bunch of different files because JEEZ this is unreadable garbage
@@ -26,29 +26,25 @@
     user id 0 is the system, which does not ever have to obey territory or fabber boundaries.
 */
 
+use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
-use warp::Filter;
-use futures_util::{StreamExt, SinkExt};
-use tokio::sync::{Mutex, mpsc, broadcast};
-use std::sync::Arc;
-use bevy::ecs::schedule::ScheduleLabel;
 use rand::Rng;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use common::types::*;
-use common::VERSION;
-use common::PlayerId;
 pub use common::comms;
-use comms::{ ClientMessage, ServerMessage };
+use common::types::*;
+use common::PlayerId;
+use common::VERSION;
+use comms::{ClientMessage, ServerMessage};
 
-
-pub enum Comms { // webserver -> game engine
-    ClientConnect(Client), // (client) a client connected
-    ClientDisconnect(PlayerId), // (id) a client disconnected
-    MessageFrom(PlayerId, ClientMessage) // (id, message) a client sent a message that was successfully decoded and filtered
+pub enum Comms {
+    // webserver -> game engine
+    ClientConnect(Client),                // (client) a client connected
+    ClientDisconnect(PlayerId),           // (id) a client disconnected
+    MessageFrom(PlayerId, ClientMessage), // (id, message) a client sent a message that was successfully decoded and filtered
 }
-
 
 pub mod solve_spaceship;
 use solve_spaceship::*;
@@ -68,77 +64,128 @@ use systems::*;
 pub mod resources;
 use resources::*;
 
+pub mod websocket;
 
 pub struct Client {
-    id : PlayerId,
-    nickname : String,
-    slot : u8,
-    channel : std::sync::Mutex<tokio::sync::mpsc::Sender<ServerMessage>>,
-    has_placed_castle : bool,
-    alive : bool,
-    money : u32, // if I make it a u16 richard will crash the server by somehow farming up >66k money
-    connected : bool
+    id: PlayerId,
+    nickname: String,
+    slot: u8,
+    channel: crossbeam::channel::Sender<(PlayerId, ServerMessage)>,
+    has_placed_castle: bool,
+    alive: bool,
+    money: u32, // if I make it a u16 richard will crash the server by somehow farming up >66k money
+    connected: bool,
 }
 
-
 impl Client {
-    fn send(&self, msg : ServerMessage) {
-        if let Ok(lock) = self.channel.lock() {
-            if let Err(_) = lock.try_send(msg) {
-                println!("failed to send message on channel");
-            }
+    fn send(&self, msg: ServerMessage) {
+        if let Err(_) = self.channel.try_send((self.id, msg)) {
+            println!("failed to send message on channel");
         }
     }
 
-    fn collect(&mut self, amount : u32) {
+    fn collect(&mut self, amount: u32) {
         self.money += amount;
-        self.send(ServerMessage::Money { id : self.id, amount : self.money });
+        self.send(ServerMessage::Money {
+            id: self.id,
+            amount: self.money,
+        });
     }
 
-    fn charge(&mut self, amount : u32) -> bool { // returns if we actually successfully made the charge or not
+    fn charge(&mut self, amount: u32) -> bool {
+        // returns if we actually successfully made the charge or not
         if self.money >= amount {
             self.money -= amount;
-            self.send(ServerMessage::Money { id : self.id, amount : self.money });
+            self.send(ServerMessage::Money {
+                id: self.id,
+                amount: self.money,
+            });
             return true;
         }
         return false;
     }
 }
 
-
 #[derive(Copy, Clone)]
 enum Bullets {
-    MinorBullet(u16), // simple bullet with range
-    Bomb(ExplosionProperties, u16) // properties of the explosion we're boutta detonate, range of the bullet
+    MinorBullet(u16),               // simple bullet with range
+    Bomb(ExplosionProperties, u16), // properties of the explosion we're boutta detonate, range of the bullet
 }
 
-
-fn discharge_barrel(commands : &mut Commands, owner : PlayerId, barrel : u16, gun : &Gun, position : &Transform, velocity : &Velocity, broadcast : &ResMut<Sender>) {
+fn discharge_barrel(
+    commands: &mut Commands,
+    owner: PlayerId,
+    barrel: u16,
+    gun: &Gun,
+    position: &Transform,
+    velocity: &Velocity,
+    broadcast: &ResMut<Sender>,
+) {
     let ang = position.rotation.to_euler(EulerRot::ZYX).0;
     let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 450.0);
     let mut transform = position.clone();
     transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
-    transform.translation += (Vec2::from_angle(ang).perp() * gun.barrel_spacing * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5)).extend(0.0);
+    transform.translation += (Vec2::from_angle(ang).perp()
+        * gun.barrel_spacing
+        * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5))
+        .extend(0.0);
     match gun.bullets {
         Bullets::MinorBullet(range) => {
-            let piece = commands.spawn((GamePiece::new(PieceType::Bullet, owner, 0, 0.5), RigidBody::Dynamic, Collider::cuboid(2.5, 2.5), vel, TransformBundle::from(transform), Damping {
-                linear_damping : 0.0,
-                angular_damping : 0.0
-            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-            let _ = broadcast.send(ServerMessage::ObjectCreate { x : transform.translation.x, y : transform.translation.y, a : ang, owner : PlayerId::SYSTEM, id : piece.id().into(), tp : PieceType::Bullet });
-        },
+            let piece = commands.spawn((
+                GamePiece::new(PieceType::Bullet, owner, 0, 0.5),
+                RigidBody::Dynamic,
+                Collider::cuboid(2.5, 2.5),
+                vel,
+                TransformBundle::from(transform),
+                Damping {
+                    linear_damping: 0.0,
+                    angular_damping: 0.0,
+                },
+                TimeToLive { lifetime: range },
+                Bullet { tp: gun.bullets },
+                ActiveEvents::COLLISION_EVENTS,
+            ));
+            let _ = broadcast.send(ServerMessage::ObjectCreate {
+                x: transform.translation.x,
+                y: transform.translation.y,
+                a: ang,
+                owner: PlayerId::SYSTEM,
+                id: piece.id().into(),
+                tp: PieceType::Bullet,
+            });
+        }
         Bullets::Bomb(_, range) => {
-            let piece = commands.spawn((GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5), RigidBody::Dynamic, Collider::cuboid(5.0, 5.0), vel, TransformBundle::from(transform), Damping {
-                linear_damping : 0.0,
-                angular_damping : 0.0
-            }, TimeToLive { lifetime : range }, Bullet { tp : gun.bullets }, ActiveEvents::COLLISION_EVENTS));
-            let _ = broadcast.send(ServerMessage::ObjectCreate { x : transform.translation.x, y : transform.translation.y, a : ang, owner : PlayerId::SYSTEM, id : piece.id().into(), tp : PieceType::SmallBomb });
+            let piece = commands.spawn((
+                GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5),
+                RigidBody::Dynamic,
+                Collider::cuboid(5.0, 5.0),
+                vel,
+                TransformBundle::from(transform),
+                Damping {
+                    linear_damping: 0.0,
+                    angular_damping: 0.0,
+                },
+                TimeToLive { lifetime: range },
+                Bullet { tp: gun.bullets },
+                ActiveEvents::COLLISION_EVENTS,
+            ));
+            let _ = broadcast.send(ServerMessage::ObjectCreate {
+                x: transform.translation.x,
+                y: transform.translation.y,
+                a: ang,
+                owner: PlayerId::SYSTEM,
+                id: piece.id().into(),
+                tp: PieceType::SmallBomb,
+            });
         }
     }
 }
 
-
-fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &GamePiece, &mut Gun)>, broadcast : ResMut<Sender>) {
+fn shoot(
+    mut commands: Commands,
+    mut pieces: Query<(&Transform, &Velocity, &GamePiece, &mut Gun)>,
+    broadcast: ResMut<Sender>,
+) {
     for (position, velocity, piece, mut gun) in pieces.iter_mut() {
         if gun.enabled {
             if gun.tick == 0 {
@@ -146,16 +193,30 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &Ga
                 if gun.r_point >= gun.repeats {
                     gun.tick = gun.cd;
                     gun.r_point = 0;
-                }
-                else {
+                } else {
                     gun.tick = gun.repeat_cd;
                 }
                 if gun.scatter_barrels {
-                    discharge_barrel(&mut commands, piece.owner, rand::thread_rng().gen_range(0..gun.barrels), &gun, position, velocity, &broadcast);
-                }
-                else {
+                    discharge_barrel(
+                        &mut commands,
+                        piece.owner,
+                        rand::thread_rng().gen_range(0..gun.barrels),
+                        &gun,
+                        position,
+                        velocity,
+                        &broadcast,
+                    );
+                } else {
                     for barrel in 0..gun.barrels {
-                        discharge_barrel(&mut commands, piece.owner, barrel, &gun, position, velocity, &broadcast);
+                        discharge_barrel(
+                            &mut commands,
+                            piece.owner,
+                            barrel,
+                            &gun,
+                            position,
+                            velocity,
+                            &broadcast,
+                        );
                     }
                 }
             }
@@ -164,28 +225,41 @@ fn shoot(mut commands : Commands, mut pieces : Query<(&Transform, &Velocity, &Ga
     }
 }
 
-
-fn ttl(mut expirees : Query<(Entity, &mut TimeToLive)>, mut kill_event : EventWriter<PieceDestroyedEvent>) {
+fn ttl(
+    mut expirees: Query<(Entity, &mut TimeToLive)>,
+    mut kill_event: EventWriter<PieceDestroyedEvent>,
+) {
     for (entity, mut ttl) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
-            kill_event.send(PieceDestroyedEvent { piece : entity, responsible : PlayerId::SYSTEM });
-        }
-        else {
+            kill_event.send(PieceDestroyedEvent {
+                piece: entity,
+                responsible: PlayerId::SYSTEM,
+            });
+        } else {
             ttl.lifetime -= 1;
         }
     }
 }
 
-
-fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Query<&GamePiece>, bullets : Query<(&Bullet, &Transform)>, chests : Query<&Chest>, mut events : EventReader<PieceDestroyedEvent>, mut explosions : EventWriter<ExplosionEvent>, mut client_kill : EventWriter<ClientKilledEvent>, mut clients : ResMut<ClientMap>) {
+fn on_piece_dead(
+    mut commands: Commands,
+    broadcast: ResMut<Sender>,
+    pieces: Query<&GamePiece>,
+    bullets: Query<(&Bullet, &Transform)>,
+    chests: Query<&Chest>,
+    mut events: EventReader<PieceDestroyedEvent>,
+    mut explosions: EventWriter<ExplosionEvent>,
+    mut client_kill: EventWriter<ClientKilledEvent>,
+    mut clients: ResMut<ClientMap>,
+) {
     for evt in events.read() {
         if let Ok(piece) = pieces.get(evt.piece) {
             if let Ok((bullet, pos)) = bullets.get(evt.piece) {
                 if let Bullets::Bomb(explosion, _) = bullet.tp {
                     explosions.send(ExplosionEvent {
-                        x : pos.translation.x,
-                        y : pos.translation.y,
-                        props : explosion
+                        x: pos.translation.x,
+                        y: pos.translation.y,
+                        props: explosion,
                     });
                 }
             }
@@ -195,18 +269,27 @@ fn on_piece_dead(mut commands : Commands, broadcast : ResMut<Sender>, pieces : Q
                 }
             }
             if piece.tp == PieceType::Castle {
-                client_kill.send(ClientKilledEvent { client : piece.owner });
+                client_kill.send(ClientKilledEvent {
+                    client: piece.owner,
+                });
             }
             commands.entity(evt.piece).despawn();
-            if let Err(_) = broadcast.send(ServerMessage::DeleteObject { id : evt.piece.into() }) {
-                println!("game engine lost connection to webserver. this is probably not critical.");
+            if let Err(_) = broadcast.send(ServerMessage::DeleteObject {
+                id: evt.piece.into(),
+            }) {
+                println!(
+                    "game engine lost connection to webserver. this is probably not critical."
+                );
             }
         }
     }
 }
 
-
-fn seed_mature(mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : EventWriter<PlaceEvent>, mut destroy : EventWriter<PieceDestroyedEvent>) {
+fn seed_mature(
+    mut seeds: Query<(Entity, &Transform, &mut Seed)>,
+    place: EventWriter<PlaceEvent>,
+    mut destroy: EventWriter<PieceDestroyedEvent>,
+) {
     let mut place = Placer(place);
     for (entity, transform, mut seed) in seeds.iter_mut() {
         if seed.growing {
@@ -214,125 +297,168 @@ fn seed_mature(mut seeds : Query<(Entity, &Transform, &mut Seed)>, place : Event
         }
         if seed.time_to_grow == 0 {
             destroy.send(PieceDestroyedEvent {
-                piece : entity,
-                responsible : PlayerId::SYSTEM
+                piece: entity,
+                responsible: PlayerId::SYSTEM,
             });
             place.chest_free(transform.translation.x, transform.translation.y);
         }
     }
 }
 
-
-struct Placer<'a> (EventWriter<'a, PlaceEvent>);
+struct Placer<'a>(EventWriter<'a, PlaceEvent>);
 
 impl Placer<'_> {
-    fn p_simple(&mut self, x : f32, y : f32, client : PlayerId, slot : u8, tp : PieceType) {
+    fn p_simple(&mut self, x: f32, y: f32, client: PlayerId, slot: u8, tp: PieceType) {
         self.0.send(PlaceEvent {
             x,
             y,
-            a : 0.0,
-            owner : client,
+            a: 0.0,
+            owner: client,
             slot,
             tp,
-            free : false
+            free: false,
         });
     }
 
-    fn basic_fighter_free(&mut self, x : f32, y : f32, a : f32, client : PlayerId, slot : u8) {
+    fn basic_fighter_free(&mut self, x: f32, y: f32, a: f32, client: PlayerId, slot: u8) {
         self.0.send(PlaceEvent {
-            x, y, a,
-            owner : client,
+            x,
+            y,
+            a,
+            owner: client,
             slot,
-            tp : PieceType::BasicFighter,
-            free : true
+            tp: PieceType::BasicFighter,
+            free: true,
         });
     }
 
-    fn small_lasernode_free(&mut self, x : f32, y : f32, client : PlayerId, slot : u8) {
+    fn small_lasernode_free(&mut self, x: f32, y: f32, client: PlayerId, slot: u8) {
         self.0.send(PlaceEvent {
-            x, y, a : 0.0,
-            owner : client,
+            x,
+            y,
+            a: 0.0,
+            owner: client,
             slot,
-            tp : PieceType::LaserNode,
-            free : true
+            tp: PieceType::LaserNode,
+            free: true,
         });
     }
 
-    fn chest_free(&mut self, x : f32, y : f32) {
+    fn chest_free(&mut self, x: f32, y: f32) {
         self.0.send(PlaceEvent {
-            x, y, a : 0.0,
-            owner : PlayerId::SYSTEM,
-            slot : 0,
-            tp : PieceType::Chest,
-            free : true
+            x,
+            y,
+            a: 0.0,
+            owner: PlayerId::SYSTEM,
+            slot: 0,
+            tp: PieceType::Chest,
+            free: true,
         });
     }
 
-    fn castle(&mut self, x : f32, y : f32, client : PlayerId, slot : u8) {
+    fn castle(&mut self, x: f32, y: f32, client: PlayerId, slot: u8) {
         self.0.send(PlaceEvent {
-            x, y, a : 0.0,
-            owner : client,
+            x,
+            y,
+            a: 0.0,
+            owner: client,
             slot,
-            tp : PieceType::Castle,
-            free : true
+            tp: PieceType::Castle,
+            free: true,
         });
     }
 }
 
-
-fn boom(mut commands : Commands, mut explosions : EventReader<ExplosionEvent>, sender : ResMut<Sender>) { // manage explosions
+fn boom(
+    mut commands: Commands,
+    mut explosions: EventReader<ExplosionEvent>,
+    sender: ResMut<Sender>,
+) {
+    // manage explosions
     // explosions are really just sensored colliders with an explosionproperties
     for explosion in explosions.read() {
-        let _ = sender.send(ServerMessage::Explosion { x : explosion.x, y : explosion.y, radius : explosion.props.radius, damage : explosion.props.damage });
-        commands.spawn((RigidBody::Dynamic, explosion.props, Collider::cuboid(explosion.props.radius, explosion.props.radius), TransformBundle::from(Transform::from_xyz(explosion.x, explosion.y, 0.0)), ActiveEvents::COLLISION_EVENTS));
+        let _ = sender.send(ServerMessage::Explosion {
+            x: explosion.x,
+            y: explosion.y,
+            radius: explosion.props.radius,
+            damage: explosion.props.damage,
+        });
+        commands.spawn((
+            RigidBody::Dynamic,
+            explosion.props,
+            Collider::cuboid(explosion.props.radius, explosion.props.radius),
+            TransformBundle::from(Transform::from_xyz(explosion.x, explosion.y, 0.0)),
+            ActiveEvents::COLLISION_EVENTS,
+        ));
     }
 }
 
-
-fn explosion_clear(mut commands : Commands, explosions : Query<(Entity, &ExplosionProperties)>) { // must come BEFORE boom (so it's always on the tick afterwards)
+fn explosion_clear(mut commands: Commands, explosions: Query<(Entity, &ExplosionProperties)>) {
+    // must come BEFORE boom (so it's always on the tick afterwards)
     for (entity, _) in explosions.iter() {
         commands.entity(entity).despawn();
     }
 }
 
-
-fn send_objects(mut events : EventReader<NewClientEvent>, mut clients : ResMut<ClientMap>, objects : Query<(Entity, &GamePiece, &Transform, Option<&Territory>, Option<&Fabber>)>) {
+fn send_objects(
+    mut events: EventReader<NewClientEvent>,
+    mut clients: ResMut<ClientMap>,
+    objects: Query<(
+        Entity,
+        &GamePiece,
+        &Transform,
+        Option<&Territory>,
+        Option<&Fabber>,
+    )>,
+) {
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
             for (entity, piece, transform, territory, fabber) in objects.iter() {
                 client.send(ServerMessage::ObjectCreate {
-                    x : transform.translation.x,
-                    y : transform.translation.y,
-                    a : transform.rotation.to_euler(EulerRot::ZYX).0,
-                    owner : piece.owner,
-                    id : entity.into(),
-                    tp : piece.tp
+                    x: transform.translation.x,
+                    y: transform.translation.y,
+                    a: transform.rotation.to_euler(EulerRot::ZYX).0,
+                    owner: piece.owner,
+                    id: entity.into(),
+                    tp: piece.tp,
                 });
                 if let Some(territory) = territory {
-                    client.send(ServerMessage::Territory { id : entity.into(), radius : territory.radius });
+                    client.send(ServerMessage::Territory {
+                        id: entity.into(),
+                        radius: territory.radius,
+                    });
                 }
                 if let Some(fabber) = fabber {
-                    client.send(ServerMessage::Fabber { id : entity.into(), radius : fabber.radius });
+                    client.send(ServerMessage::Fabber {
+                        id: entity.into(),
+                        radius: fabber.radius,
+                    });
                 }
             }
         }
     }
 }
 
-fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &mut GamePiece, &Transform)>) {
+fn position_updates(
+    broadcast: ResMut<Sender>,
+    mut objects: Query<(Entity, &mut GamePiece, &Transform)>,
+) {
     for (entity, mut piece, transform) in objects.iter_mut() {
         // todo: only send position updates if it's moving
         let pos = transform.translation.truncate();
         let ang = transform.rotation.to_euler(EulerRot::ZYX).0;
         // updates on position
         piece.c_vel = piece.last_update_pos - pos;
-        if (pos - piece.last_update_pos).length() > 1.0 || loopify(ang, piece.last_update_ang).abs() > 0.01 {
+        if (pos - piece.last_update_pos).length() > 1.0
+            || loopify(ang, piece.last_update_ang).abs() > 0.01
+        {
             // are basically straight lines.
-            let _ = broadcast.send(ServerMessage::ObjectMove { // ignore the errors
-                id : entity.into(),
-                x : pos.x,
-                y : pos.y,
-                a : transform.rotation.to_euler(EulerRot::ZYX).0
+            let _ = broadcast.send(ServerMessage::ObjectMove {
+                // ignore the errors
+                id: entity.into(),
+                x: pos.x,
+                y: pos.y,
+                a: transform.rotation.to_euler(EulerRot::ZYX).0,
             });
             piece.last_update_pos = pos;
             piece.last_update_ang = ang;
@@ -340,45 +466,51 @@ fn position_updates(broadcast : ResMut<Sender>, mut objects : Query<(Entity, &mu
     }
 }
 
-fn frame_broadcast(broadcast : ResMut<Sender>, mut state : ResMut<GameState>, config : Res<GameConfig>) {
+fn frame_broadcast(
+    broadcast: ResMut<Sender>,
+    mut state: ResMut<GameState>,
+    config: Res<GameConfig>,
+) {
     if state.playing {
         state.tick += 1;
         if state.tick > state.time_in_stage {
             state.strategy = !state.strategy;
             if state.strategy {
                 state.time_in_stage = config.strategy_period;
-            }
-            else {
+            } else {
                 state.time_in_stage = config.play_period;
             }
             state.tick = 0;
         }
-    }
-    else {
+    } else {
         if state.currently_playing >= config.min_player_slots {
             state.tick += 1;
-        }
-        else {
+        } else {
             state.tick = 0;
         }
         if state.tick > state.time_in_stage {
             state.playing = true;
         }
     }
-    let _ = broadcast.send(ServerMessage::GameState { stage : state.get_state_enum(), tick_in_stage : state.tick, stage_duration : state.time_in_stage });
+    let _ = broadcast.send(ServerMessage::GameState {
+        stage: state.get_state_enum(),
+        tick_in_stage: state.tick,
+        stage_duration: state.time_in_stage,
+    });
 }
 
-
-fn update_field_sensors(mut sensors : Query<(&FieldSensor, &mut Transform)>, pieces : Query<&Transform, Without<FieldSensor>>) {
+fn update_field_sensors(
+    mut sensors: Query<(&FieldSensor, &mut Transform)>,
+    pieces: Query<&Transform, Without<FieldSensor>>,
+) {
     for (sensor, mut pos) in sensors.iter_mut() {
         if let Ok(piece_pos) = pieces.get(sensor.attached_to) {
             pos.translation = piece_pos.translation;
-        } 
+        }
     }
 }
 
-
-fn setup(mut commands : Commands, mut state : ResMut<GameState>, config : Res<GameConfig>) {
+fn setup(mut commands: Commands, mut state: ResMut<GameState>, config: Res<GameConfig>) {
     // todo: construct board (walls, starting rubble, etc)
     state.tick = 0;
     state.time_in_stage = config.wait_period;
@@ -386,18 +518,23 @@ fn setup(mut commands : Commands, mut state : ResMut<GameState>, config : Res<Ga
     commands.spawn(BoardSetup(system));
 }
 
-
 struct EmptyWorld;
 
-
 impl bevy::ecs::world::Command for EmptyWorld {
-    fn apply(self, world : &mut World) {
+    fn apply(self, world: &mut World) {
         world.clear_entities(); // todo: don't clear (or do respawn) things that should stick around, like walls
     }
 }
 
-
-fn client_health_check(mut commands : Commands, mut events : EventReader<ClientKilledEvent>, mut piece_kill : EventWriter<PieceDestroyedEvent>, mut clients : ResMut<ClientMap>, pieces : Query<(Option<&Territory>, &GamePiece, Entity)>, mut state : ResMut<GameState>, config : Res<GameConfig>) {
+fn client_health_check(
+    mut commands: Commands,
+    mut events: EventReader<ClientKilledEvent>,
+    mut piece_kill: EventWriter<PieceDestroyedEvent>,
+    mut clients: ResMut<ClientMap>,
+    pieces: Query<(Option<&Territory>, &GamePiece, Entity)>,
+    mut state: ResMut<GameState>,
+    config: Res<GameConfig>,
+) {
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
     // * if the client has any remaining Territory, it's not dead, false alarm
@@ -405,11 +542,12 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
     // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
     let mut did_something = false;
     for ev in events.read() {
-        if clients.contains_key(&ev.client) { // if the client's already disconnected, we can't exactly tell them they lost
+        if clients.contains_key(&ev.client) {
+            // if the client's already disconnected, we can't exactly tell them they lost
             let mut has_territory = false;
             for (territory, piece, _) in pieces.iter() {
                 if territory.is_some() && piece.owner == ev.client {
-                    has_territory = true; 
+                    has_territory = true;
                 }
             }
             if !has_territory {
@@ -420,27 +558,27 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
                     for (_, piece, entity) in pieces.iter() {
                         if piece.owner == clients[&ev.client].id {
                             piece_kill.send(PieceDestroyedEvent {
-                                piece : entity.into(),
-                                responsible : ev.client
+                                piece: entity.into(),
+                                responsible: ev.client,
                             });
                         }
                     }
                 }
             }
-        }
-        else {
+        } else {
             for (_, piece, entity) in pieces.iter() {
                 if piece.owner == ev.client {
                     piece_kill.send(PieceDestroyedEvent {
-                        piece : entity.into(),
-                        responsible : ev.client
+                        piece: entity.into(),
+                        responsible: ev.client,
                     });
                 }
             }
         }
         did_something = true;
     }
-    if !state.io && did_something { // only if we made a change does it make sense to update the state here
+    if !state.io && did_something {
+        // only if we made a change does it make sense to update the state here
         if state.playing && state.currently_playing < 2 {
             if state.currently_playing == 1 {
                 let mut winid = PlayerId::SYSTEM;
@@ -451,7 +589,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
                     }
                 }
                 for (_, client) in clients.iter() {
-                    client.send(ServerMessage::Winner { id : winid });
+                    client.send(ServerMessage::Winner { id: winid });
                     client.send(ServerMessage::Disconnect);
                 }
             }
@@ -460,7 +598,7 @@ fn client_health_check(mut commands : Commands, mut events : EventReader<ClientK
             state.tick = 0;
             state.time_in_stage = config.wait_period;
             state.currently_playing = 0;
-            commands.add(EmptyWorld{});
+            commands.add(EmptyWorld {});
         }
         if state.currently_playing < config.min_player_slots {
             state.playing = false;
@@ -477,161 +615,171 @@ pub struct PhysicsSchedule;
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PlaySchedule;
 
-
-fn run_play_schedule(world : &mut World) {
-    let state = world.get_resource::<GameState>().expect("gamestate resource not loaded!");
+fn run_play_schedule(world: &mut World) {
+    let state = world
+        .get_resource::<GameState>()
+        .expect("gamestate resource not loaded!");
     if state.playing && !state.strategy {
         world.run_schedule(PhysicsSchedule);
         world.run_schedule(PlaySchedule);
     }
 }
 
-
-fn setup_board(mut commands : Commands, config : Res<GameConfig>) { // set up the gameboard
+fn setup_board(mut commands: Commands, config: Res<GameConfig>) {
+    // set up the gameboard
     // this runs after every board clear
-    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(config.width / 2.0, -100.0, 0.0)), Collider::cuboid(config.width / 2.0, 100.0)));
-    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(config.width / 2.0, config.height + 100.0, 0.0)), Collider::cuboid(config.width / 2.0, 100.0)));
-    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(-100.0, config.height / 2.0, 0.0)), Collider::cuboid(100.0, config.height / 2.0)));
-    commands.spawn((RigidBody::Fixed, StaticWall{}, TransformBundle::from(Transform::from_xyz(config.width + 100.0, config.height / 2.0, 0.0)), Collider::cuboid(100.0, config.height / 2.0)));
+    commands.spawn((
+        RigidBody::Fixed,
+        StaticWall {},
+        TransformBundle::from(Transform::from_xyz(config.width / 2.0, -100.0, 0.0)),
+        Collider::cuboid(config.width / 2.0, 100.0),
+    ));
+    commands.spawn((
+        RigidBody::Fixed,
+        StaticWall {},
+        TransformBundle::from(Transform::from_xyz(
+            config.width / 2.0,
+            config.height + 100.0,
+            0.0,
+        )),
+        Collider::cuboid(config.width / 2.0, 100.0),
+    ));
+    commands.spawn((
+        RigidBody::Fixed,
+        StaticWall {},
+        TransformBundle::from(Transform::from_xyz(-100.0, config.height / 2.0, 0.0)),
+        Collider::cuboid(100.0, config.height / 2.0),
+    ));
+    commands.spawn((
+        RigidBody::Fixed,
+        StaticWall {},
+        TransformBundle::from(Transform::from_xyz(
+            config.width + 100.0,
+            config.height / 2.0,
+            0.0,
+        )),
+        Collider::cuboid(100.0, config.height / 2.0),
+    ));
 }
 
+fn main() {
+    let (to_bevy_tx, to_bevy_rx) = crossbeam::channel::unbounded();
+    let (from_bevy_broadcast_tx, from_bevy_broadcast_rx) = crossbeam::channel::unbounded();
+    let (from_bevy_specific_tx, from_bevy_specific_rx) =
+        crossbeam::channel::unbounded::<(PlayerId, ServerMessage)>();
 
-#[tokio::main]
-async fn main() {
-    let top_id = Arc::new(Mutex::new(1_u64)); // POSSIBLE BUG: if the client id goes beyond 18,446,744,073,709,551,615, it may overflow and assign duplicate IDs
-    // this is not likely to be a real problem
-    // [2025-5-6] yeah no shit
-    //            Old Me comments are pretty dumb :pensive:
-    let (to_bevy_tx, to_bevy_rx) = mpsc::channel::<Comms>(1024);
-    let (from_bevy_broadcast_tx, _) = broadcast::channel::<ServerMessage>(1024);
-    let bevy_broadcast_tx_cloner = from_bevy_broadcast_tx.clone();
-    let websocket = warp::path("game")
-        .and(warp::ws())
-        .and(warp::any().map(move || {
-            top_id.clone()
-        }))
-        .and(warp::any().map(move || {
-            to_bevy_tx.clone()
-        }))
-        .and(warp::any().map(move || {
-            bevy_broadcast_tx_cloner.subscribe()
-        }))
-        .map(|ws : warp::ws::Ws, top_id : Arc<Mutex<u64>>, to_bevy : mpsc::Sender<Comms>, mut from_bevy_broadcast : broadcast::Receiver<ServerMessage>| {
-            ws.max_frame_size(MAX_FRAME_SIZE).on_upgrade(|client| async move {
-                let mut topid = top_id.lock().await;
-                let my_id = PlayerId(*topid);
-                *topid += 1;
-                drop(topid);
-                let (mut client_tx, mut client_rx) = client.split();
-                let (from_bevy_tx, mut from_bevy_rx) = tokio::sync::mpsc::channel(1024);
-                let mut me_verified = false;
-                let mut cl = Some(Client {
-                    has_placed_castle : false,
-                    id : my_id,
-                    nickname : "None".to_string(),
-                    slot : 0,
-                    channel : std::sync::Mutex::new(from_bevy_tx),
-                    alive : false,
-                    money : 0,
-                    connected : false
-                });
-                if let Err(_) = client_tx.send(warp::ws::Message::binary(bitcode::encode(&ServerMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION)))).await {
-                    println!("client disconnected before handshake");
-                    return;
-                }
-                'cli_loop: loop {
-                    tokio::select!{
-                        message = client_rx.next() => {
-                            match message {
-                                Some(msg) => {
-                                    if let Ok(msg) = msg {
-                                        if msg.is_binary() {
-                                            if let Ok(frame) = bitcode::decode::<ClientMessage>(&msg.as_bytes()) {
-                                                if me_verified {
-                                                    if let Err(_) = to_bevy.send(Comms::MessageFrom(my_id, frame)).await {
-                                                        println!("channel failure 1: lost connection to game engine");
-                                                        break 'cli_loop;
-                                                    }
-                                                }
-                                                else {
-                                                    if frame == ClientMessage::Test("EXOSPHERE".to_string(), 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION) {
-                                                        let cl_out = cl.take().expect("fatal: apparent reuse of client (this code path should NEVER be called!)");
-                                                        if let Err(_) = to_bevy.send(Comms::ClientConnect(cl_out)).await {
-                                                            println!("channel failure 1.125: lost connection to game engine");
-                                                            break 'cli_loop;
-                                                        }
-                                                        me_verified = true;
-                                                    }
-                                                    else {
-                                                        println!("client failed verification");
-                                                        break 'cli_loop;
-                                                    }
-                                                }
-                                            }
-                                            else {
-                                                println!("channel failure 1.25: malformed frame");
-                                                break 'cli_loop;
-                                            }
-                                        }
-                                    }
-                                    else {
-                                        println!("channel failure 2");
-                                        break 'cli_loop;
-                                    }
-                                }
-                                None => {
-                                    if me_verified {
-                                        if let Err(_) = to_bevy.send(Comms::ClientDisconnect(my_id)).await {
-                                            println!("channel failure 3: lost connection to game engine");
-                                        }
-                                    }
-                                    else {
-                                        println!("client disconnect before completion of handshake");
-                                        break 'cli_loop;
-                                    }
-                                    break 'cli_loop;
-                                }
+    std::thread::spawn(move || {
+        let mut server = websocket::Server::new("127.0.0.1:8080").unwrap();
+        struct ClientProperties {
+            has_tested: bool, // successful test response received
+        }
+        use std::collections::HashMap;
+        let mut clients: HashMap<websocket::ClientId, ClientProperties> = HashMap::new();
+        loop {
+            server.do_poll(
+                &mut clients,
+                |id, m: ClientMessage, server, clients| {
+                    let clprops = clients.get_mut(&id).unwrap();
+                    if clprops.has_tested {
+                        if let Err(_) = to_bevy_tx.send(Comms::MessageFrom(id.into(), m)) {
+                            println!("channel failure: this is probably fatal");
+                        }
+                    } else {
+                        if m == ClientMessage::Test(
+                            "EXOSPHERE".to_string(),
+                            128,
+                            4096,
+                            115600,
+                            123456789012345,
+                            -64,
+                            -4096,
+                            -115600,
+                            -123456789012345,
+                            -4096.512,
+                            -8192.756,
+                            VERSION,
+                        ) {
+                            clprops.has_tested = true;
+                            let client = Client {
+                                has_placed_castle: false,
+                                money: 0,
+                                nickname: "None".to_string(),
+                                slot: 0,
+                                alive: false,
+                                id: id.into(),
+                                connected: false,
+                                channel: from_bevy_specific_tx.clone(),
+                            };
+                            if let Err(_) = to_bevy_tx.send(Comms::ClientConnect(client)) {
+                                println!("channel failure: this is probably fatal");
                             }
-                        },
-                        msg = from_bevy_rx.recv() => {
-                            match msg {
-                                Some(msg) => {
-                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(bitcode::encode(&msg))).await {
-                                        println!("channel failure 4");
-                                        break 'cli_loop;
-                                    }
-                                    if let ServerMessage::Disconnect = msg {
-                                        let _ = client_tx.close().await;
-                                        break 'cli_loop;
-                                    }
-                                }
-                                None => {
-                                    println!("channel failure 5: connection to game engine broken");
-                                    break 'cli_loop;
-                                }
-                            }
-                        },
-                        msg = from_bevy_broadcast.recv() => {
-                            match msg {
-                                Ok(msg) => {
-                                    if let Err(_) = client_tx.send(warp::ws::Message::binary(bitcode::encode(&msg))).await {
-                                        println!("channel failure 6");
-                                        break 'cli_loop;
-                                    }
-                                }
-                                Err(_) => {
-                                    println!("broadcast channel failure. This is likely fatal.");
-                                    break 'cli_loop;
-                                }
+                        } else {
+                            server.close(id);
+                        }
+                    }
+                },
+                |id, server, clients| {
+                    clients.insert(id, ClientProperties { has_tested: false });
+                    println!("new client {:?}", id);
+                    server.send_to(
+                        id,
+                        ServerMessage::Test(
+                            "EXOSPHERE".to_string(),
+                            128,
+                            4096,
+                            115600,
+                            123456789012345,
+                            -64,
+                            -4096,
+                            -115600,
+                            -123456789012345,
+                            -4096.512,
+                            -8192.756,
+                            VERSION,
+                        ),
+                    )
+                },
+                |id, clients| {
+                    if let Some(client) = clients.get(&id) {
+                        if client.has_tested {
+                            if let Err(_) = to_bevy_tx.send(Comms::ClientDisconnect(id.into())) {
+                                println!("channel failure: this is probably fatal");
                             }
                         }
                     }
+                },
+            );
+            loop {
+                match from_bevy_broadcast_rx.try_recv() {
+                    Ok(message) => {
+                        server.broadcast(message);
+                    }
+                    Err(crossbeam::channel::TryRecvError::Empty) => {
+                        break;
+                    }
+                    _ => {
+                        panic!("channel failure!");
+                    }
                 }
-            })
-        });
-    tokio::task::spawn(warp::serve(websocket).run(([0,0,0,0], 3000)));
+            }
+            loop {
+                match from_bevy_specific_rx.try_recv() {
+                    Ok((id, message)) => {
+                        server.send_to(id.into(), message);
+                    }
+                    Err(crossbeam::channel::TryRecvError::Empty) => {
+                        break;
+                    }
+                    _ => {
+                        panic!("channel failure!");
+                    }
+                }
+            }
+        }
+    });
+
     let mut config = RapierConfiguration::new(100.0);
-    config.gravity = Vec2 { x : 0.0, y : 0.0 };
+    config.gravity = Vec2 { x: 0.0, y: 0.0 };
     App::new()
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().with_default_system_setup(false))
         .add_systems(
@@ -648,19 +796,28 @@ async fn main() {
         .add_systems(
             PlaySchedule,
             (
-                move_spaceshipoids, shoot, ttl, seed_mature, handle_collisions,
-                lasernodes, lasers,
-                scrapships, turrets,
-            )
+                move_spaceshipoids,
+                shoot,
+                ttl,
+                seed_mature,
+                handle_collisions,
+                lasernodes,
+                lasers,
+                scrapships,
+                turrets,
+            ),
         )
         .init_schedule(PlaySchedule)
         .init_schedule(PhysicsSchedule)
         .edit_schedule(PhysicsSchedule, |schedule| {
-            schedule.configure_sets((
-                PhysicsSet::SyncBackend,
-                PhysicsSet::StepSimulation,
-                PhysicsSet::Writeback
-            ).chain());
+            schedule.configure_sets(
+                (
+                    PhysicsSet::SyncBackend,
+                    PhysicsSet::StepSimulation,
+                    PhysicsSet::Writeback,
+                )
+                    .chain(),
+            );
         })
         .add_event::<NewClientEvent>()
         .add_event::<ClientKilledEvent>()
@@ -680,37 +837,44 @@ async fn main() {
             play_period: 20 * UPDATE_RATE as u16,
             strategy_period: 5 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
             max_player_slots: 1000,
-            min_player_slots: 1
+            min_player_slots: 1,
         })
         .insert_resource(GameState {
-            playing : false,
-            io : true,
-            strategy : false,
-            tick : 0,
-            time_in_stage : 0,
-            currently_attached_players : 0,
-            currently_playing : 0
+            playing: false,
+            io: true,
+            strategy: false,
+            tick: 0,
+            time_in_stage: 0,
+            currently_attached_players: 0,
+            currently_playing: 0,
         })
         .add_systems(PreUpdate, run_play_schedule)
-        .add_systems(Update, (client_tick,
-            send_objects,
-            position_updates,
-            frame_broadcast.before(position_updates),
-            make_thing, boom, explosion_clear.before(boom).after(handle_collisions),
-            on_piece_dead.after(handle_collisions).after(ttl).after(seed_mature),
-            update_field_sensors,
-            client_health_check,
-        )) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
+        .add_systems(
+            Update,
+            (
+                client_tick,
+                send_objects,
+                position_updates,
+                frame_broadcast.before(position_updates),
+                make_thing,
+                boom,
+                explosion_clear.before(boom).after(handle_collisions),
+                on_piece_dead
+                    .after(handle_collisions)
+                    .after(ttl)
+                    .after(seed_mature),
+                update_field_sensors,
+                client_health_check,
+            ),
+        ) // health checking should be BEFORE handle_collisions so there's a frame gap in which the entities are actually despawned
         .add_systems(Startup, (setup, setup_board))
-        .set_runner(|mut app| {
-            loop {
-                let start = std::time::Instant::now();
-                app.update();
-                let time_elapsed = start.elapsed();
-                if time_elapsed < FRAME_TIME {
-                    let time_remaining = FRAME_TIME - time_elapsed;
-                    std::thread::sleep(time_remaining);
-                }
+        .set_runner(|mut app| loop {
+            let start = std::time::Instant::now();
+            app.update();
+            let time_elapsed = start.elapsed();
+            if time_elapsed < FRAME_TIME {
+                let time_remaining = FRAME_TIME - time_elapsed;
+                std::thread::sleep(time_remaining);
             }
         })
         .run();

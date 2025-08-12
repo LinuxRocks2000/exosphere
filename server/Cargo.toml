@@ -5,11 +5,10 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.14.0", features = ["trace"] }
-warp = "*"
-tokio = { version = "*", features = ["full"] }
-tokio-macros = { version = "0.2.0-alpha.6" }
-futures-util = "*"
-log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+log = { version = "*", features = [
+    "max_level_debug",
+    "release_max_level_warn",
+] }
 common = { path = "../common/", features = ["server"] }
 bevy_rapier2d = { version = "*" }
 bevy_time = "*"
@@ -17,11 +16,16 @@ rand = "*"
 num-traits = "*"
 num-derive = "*"
 bitcode = "*"
+libc = "0.2.174"
+ringbuf = "0.4.8"
+sha1 = "0.10.6"
+base64 = "0.22.1"
+crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 
 [profile.dev]
 debug = 0
 strip = "debuginfo"
-opt-level = 1 # Switch to 1 for more runtime performance
+opt-level = 1       # Switch to 1 for more runtime performance
 # overflow-checks = false # Uncomment for better math performance
 
 [profile.dev.package."*"]
