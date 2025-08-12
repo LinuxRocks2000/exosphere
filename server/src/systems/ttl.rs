@@ -23,7 +23,7 @@ pub fn ttl(
 ) {
     for (entity, mut ttl) in expirees.iter_mut() {
         if ttl.lifetime == 0 {
-            kill_event.send(PieceDestroyedEvent {
+            kill_event.write(PieceDestroyedEvent {
                 piece: entity,
                 responsible: PlayerId::SYSTEM,
             });

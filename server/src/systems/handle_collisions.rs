@@ -27,7 +27,6 @@ pub fn handle_collisions(
     mut collision_events: EventReader<CollisionStarted>,
     mut pieces: Query<(Entity, &mut GamePiece, Option<&Bullet>, Option<&mut Seed>)>,
     mut spaceshipoids: Query<&mut Spaceshipoid>,
-    farms: Query<&Farmhouse>,
     explode_on_collision: Query<(Entity, &CollisionExplosion, &Transform)>,
     explosions: Query<&ExplosionProperties>,
     velocities: Query<&LinearVelocity, Without<StaticWall>>, // we use this to calculate the relative VELOCITY (NOT collision energy - it's physically inaccurate, but idc) and then the damage they incur.
@@ -35,10 +34,6 @@ pub fn handle_collisions(
     mut piece_destroy: EventWriter<PieceDestroyedEvent>,
     mut explosion_event: EventWriter<ExplosionEvent>,
     sensors: Query<&FieldSensor>,
-    lasernodes: Query<&LaserNode>,
-    mut scrapships: Query<&mut ScrapShip>,
-    mut turrets: Query<&mut Turret>,
-    chests: Query<&Chest>,
     clients: Res<ClientMap>,
 ) {
     for event in collision_events.read() {
@@ -109,7 +104,7 @@ pub fn handle_collisions(
                     });
                 }
                 if piece_one.health <= 0.0 {
-                    piece_destroy.send(PieceDestroyedEvent {
+                    piece_destroy.write(PieceDestroyedEvent {
                         piece: entity_one,
                         responsible: one_killer,
                     });
@@ -126,7 +121,7 @@ pub fn handle_collisions(
                     });
                 }
                 if piece_two.health <= 0.0 {
-                    piece_destroy.send(PieceDestroyedEvent {
+                    piece_destroy.write(PieceDestroyedEvent {
                         piece: entity_two,
                         responsible: two_killer,
                     });
@@ -154,7 +149,7 @@ pub fn handle_collisions(
             };
             {
                 let piece = pieces.get_mut(hit_entity);
-                if let Ok((entity, gamepiece, _, seed)) = piece {
+                if let Ok((entity, gamepiece, _, _)) = piece {
                     if gamepiece.owner != sensor_owner
                         && (gamepiece.slot != sensor_slot || gamepiece.slot == 1)
                     {

@@ -29,7 +29,7 @@ pub fn seed_mature(
             seed.time_to_grow -= 1;
         }
         if seed.time_to_grow == 0 {
-            destroy.send(PieceDestroyedEvent {
+            destroy.write(PieceDestroyedEvent {
                 piece: entity,
                 responsible: PlayerId::SYSTEM,
             });

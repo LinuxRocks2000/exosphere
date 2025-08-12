@@ -51,7 +51,7 @@ pub fn client_health_check(
                 if clients[&ev.client].id != PlayerId::SYSTEM {
                     for (_, piece, entity) in pieces.iter() {
                         if piece.owner == clients[&ev.client].id {
-                            piece_kill.send(PieceDestroyedEvent {
+                            piece_kill.write(PieceDestroyedEvent {
                                 piece: entity.into(),
                                 responsible: ev.client,
                             });
@@ -62,7 +62,7 @@ pub fn client_health_check(
         } else {
             for (_, piece, entity) in pieces.iter() {
                 if piece.owner == ev.client {
-                    piece_kill.send(PieceDestroyedEvent {
+                    piece_kill.write(PieceDestroyedEvent {
                         piece: entity.into(),
                         responsible: ev.client,
                     });

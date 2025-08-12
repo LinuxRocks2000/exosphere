@@ -7,7 +7,7 @@ pub(crate) struct Placer<'a>(pub EventWriter<'a, PlaceEvent>);
 
 impl Placer<'_> {
     pub(crate) fn p_simple(&mut self, x: f32, y: f32, client: PlayerId, slot: u8, tp: PieceType) {
-        self.0.send(PlaceEvent {
+        self.0.write(PlaceEvent {
             x,
             y,
             a: 0.0,
@@ -26,7 +26,7 @@ impl Placer<'_> {
         client: PlayerId,
         slot: u8,
     ) {
-        self.0.send(PlaceEvent {
+        self.0.write(PlaceEvent {
             x,
             y,
             a,
@@ -38,7 +38,7 @@ impl Placer<'_> {
     }
 
     pub(crate) fn small_lasernode_free(&mut self, x: f32, y: f32, client: PlayerId, slot: u8) {
-        self.0.send(PlaceEvent {
+        self.0.write(PlaceEvent {
             x,
             y,
             a: 0.0,
@@ -50,7 +50,7 @@ impl Placer<'_> {
     }
 
     pub(crate) fn chest_free(&mut self, x: f32, y: f32) {
-        self.0.send(PlaceEvent {
+        self.0.write(PlaceEvent {
             x,
             y,
             a: 0.0,
@@ -62,7 +62,7 @@ impl Placer<'_> {
     }
 
     pub(crate) fn castle(&mut self, x: f32, y: f32, client: PlayerId, slot: u8) {
-        self.0.send(PlaceEvent {
+        self.0.write(PlaceEvent {
             x,
             y,
             a: 0.0,

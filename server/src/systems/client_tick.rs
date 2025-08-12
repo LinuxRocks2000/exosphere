@@ -70,7 +70,7 @@ pub fn client_tick(
                             state.currently_playing -= 1;
                         }
                         clients.remove(&id);
-                        client_killed.send(ClientKilledEvent { client: id });
+                        client_killed.write(ClientKilledEvent { client: id });
                     }
                     Comms::MessageFrom(id, msg) => {
                         let mut kill = false;
@@ -115,7 +115,7 @@ pub fn client_tick(
                                     clients.get_mut(&id).unwrap().slot = slot;
                                     clients.get_mut(&id).unwrap().nickname = nickname;
                                     clients.get_mut(&id).unwrap().connected = true;
-                                    ev_newclient.send(NewClientEvent { id });
+                                    ev_newclient.write(NewClientEvent { id });
                                 }
                                 ClientMessage::PlacePiece { x, y, tp } => {
                                     if tp == PieceType::Castle {

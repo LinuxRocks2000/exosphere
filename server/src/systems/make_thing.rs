@@ -312,7 +312,7 @@ pub fn make_thing(
         let id = piece.id();
         if let Some(radius) = ev.tp.sensor() {
             let sensor = commands.spawn((
-                FieldSensor::new(id, radius),
+                FieldSensor::new(id),
                 Collider::circle(radius),
                 transform,
                 Sensor,

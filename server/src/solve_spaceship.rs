@@ -38,12 +38,7 @@ pub fn linear_maneuvre(
     let decel_time = current_velocity.length() / nominal_acceleration;
     let decel_dist = 0.5 * nominal_acceleration * decel_time * decel_time; // second integral of acceleration = position = p(t) = 1/2 * nominal_acceleration * t^2
     if delta.length() <= decel_dist {
-        if current_velocity
-            .project_onto(delta)
-            .angle_between(delta)
-            .abs()
-            > 0.001
-        {
+        if current_velocity.project_onto(delta).angle_to(delta).abs() > 0.001 {
             return nominal_acceleration; // if we're moving backwards, we *always* want to start moving forwards again
         }
         return -1.0 * nominal_acceleration;

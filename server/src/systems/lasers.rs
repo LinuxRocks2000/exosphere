@@ -54,7 +54,7 @@ pub fn lasers(
                 });
             }
             if piece.health <= 0.0 {
-                piece_destroy.send(PieceDestroyedEvent {
+                piece_destroy.write(PieceDestroyedEvent {
                     piece: hit.entity,
                     responsible: cast_owner,
                 });

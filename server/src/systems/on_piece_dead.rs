@@ -35,7 +35,7 @@ pub fn on_piece_dead(
         if let Ok(piece) = pieces.get(evt.piece) {
             if let Ok((bullet, pos)) = bullets.get(evt.piece) {
                 if let Bullets::Bomb(explosion, _) = bullet.tp {
-                    explosions.send(ExplosionEvent {
+                    explosions.write(ExplosionEvent {
                         x: pos.translation.x,
                         y: pos.translation.y,
                         props: explosion,
@@ -48,7 +48,7 @@ pub fn on_piece_dead(
                 }
             }
             if piece.tp == PieceType::Castle {
-                client_kill.send(ClientKilledEvent {
+                client_kill.write(ClientKilledEvent {
                     client: piece.owner,
                 });
             }

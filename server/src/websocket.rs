@@ -347,7 +347,7 @@ impl Client {
 
     fn send_raw(&mut self, data: &[u8]) {
         while let Err(_) = self.outbox.write(data) {
-            self.try_flush();
+            let _ = self.try_flush();
         }
     }
 
@@ -477,7 +477,7 @@ impl Server {
             libc::poll(
                 self.select_bucket.as_mut_ptr(),
                 self.select_bucket.len() as u64,
-                10,
+                3,
             );
         }
         let mut dispatch_queue = vec![]; // TODO: cache this to avoid allocating
