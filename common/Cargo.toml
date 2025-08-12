@@ -8,8 +8,14 @@ edition = "2021"
 bitcode = "*"
 num-derive = "*"
 num-traits = "*"
-bevy = { version = "0.14.0", features = ["trace"], optional = true }
-bevy_rapier2d = { version = "*", optional = true }
 
+avian2d = { version = "0.3", default-features = false, features = [
+    "2d",
+    "parry-f32",
+    "parallel",
+], optional = true }
+bevy = { version = "0.16.1", default-features = false, features = [
+    "std",
+], optional = true }
 [features]
-server = ["dep:bevy_rapier2d", "dep:bevy"]
+server = ["dep:avian2d", "dep:bevy"]

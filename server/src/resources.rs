@@ -13,7 +13,7 @@
 use crate::comms::*;
 use crate::Client;
 use crate::Comms;
-use bevy::prelude::{Deref, DerefMut, Resource};
+use bevy::prelude::*;
 use common::comms::Stage;
 use common::PlayerId;
 use std::collections::HashMap;

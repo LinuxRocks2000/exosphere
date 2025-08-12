@@ -15,13 +15,13 @@
 use crate::components::*;
 use crate::discharge_barrel;
 use crate::resources::*;
+use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy_rapier2d::prelude::*;
 use rand::Rng;
 
 pub fn shoot(
     mut commands: Commands,
-    mut pieces: Query<(&Transform, &Velocity, &GamePiece, &mut Gun)>,
+    mut pieces: Query<(&Transform, &LinearVelocity, &GamePiece, &mut Gun)>,
     broadcast: ResMut<Sender>,
 ) {
     for (position, velocity, piece, mut gun) in pieces.iter_mut() {

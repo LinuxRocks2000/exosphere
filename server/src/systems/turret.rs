@@ -13,20 +13,20 @@
 // turret control
 use crate::components::*;
 use crate::solve_spaceship::*;
+use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy_rapier2d::prelude::*;
 
 pub fn turrets(
     mut turrets: Query<(
         &mut Turret,
         &GamePiece,
-        &mut ExternalImpulse,
+        &mut ExternalTorque,
         &Transform,
-        &Velocity,
+        &AngularVelocity,
     )>,
-    pieces: Query<(&GamePiece, &Transform, &Velocity, &Collider)>,
+    pieces: Query<(&GamePiece, &Transform, &LinearVelocity, &Collider)>,
 ) {
-    for (mut turret, turret_piece, mut impulse, turret_pos, turret_velocity) in turrets.iter_mut() {
+    for (mut turret, turret_piece, mut torque, turret_pos, turret_angvel) in turrets.iter_mut() {
         for i in 0..turret.in_range.len() {
             if let Ok((piece, position, _, _)) = pieces.get(turret.in_range[i]) {
                 if turret_piece.owner == piece.owner
@@ -40,9 +40,12 @@ pub fn turrets(
                         piece.c_vel,
                     );
                     let c_ang = turret_pos.rotation.to_euler(EulerRot::ZYX).0;
-                    impulse.torque_impulse = turret
-                        .targeting_algorithm
-                        .swivel_kinematics(loopify(c_ang, ang), turret_velocity.angvel);
+                    torque.apply_torque(
+                        // POSSIBLY USE set_torque INSTEAD!
+                        turret
+                            .targeting_algorithm
+                            .swivel_kinematics(loopify(c_ang, ang), **turret_angvel),
+                    );
                 }
             } else {
                 turret.in_range.swap_remove(i);

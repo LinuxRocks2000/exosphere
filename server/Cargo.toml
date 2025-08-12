@@ -4,23 +4,26 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.14.0", features = ["trace"] }
-log = { version = "*", features = [
-    "max_level_debug",
-    "release_max_level_warn",
-] }
 common = { path = "../common/", features = ["server"] }
-bevy_rapier2d = { version = "*" }
+bevy = { version = "0.16.1", default-features = false, features = ["std"] }
+bevy_ecs_macros = { version = "0.16.1" }
+avian2d = { version = "0.3", default-features = false, features = [
+    "2d",
+    "f32",
+    "simd",
+    "parallel",
+    "parry-f32",
+    "bevy_diagnostic",
+] }
 bevy_time = "*"
 rand = "*"
-num-traits = "*"
-num-derive = "*"
 bitcode = "*"
 libc = "0.2.174"
 ringbuf = "0.4.8"
 sha1 = "0.10.6"
 base64 = "0.22.1"
 crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
+glam = "0.29.3"
 
 [profile.dev]
 debug = 0

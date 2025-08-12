@@ -21,6 +21,6 @@ pub fn setup(mut commands: Commands, mut state: ResMut<GameState>, config: Res<G
     // todo: construct board (walls, starting rubble, etc)
     state.tick = 0;
     state.time_in_stage = config.wait_period;
-    let system = commands.register_one_shot_system(setup_board);
+    let system = commands.register_system(setup_board);
     commands.spawn(BoardSetup(system));
 }

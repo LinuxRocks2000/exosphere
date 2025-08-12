@@ -25,9 +25,9 @@
     user id 0 is the system, which does not ever have to obey territory or fabber boundaries.
 */
 
-use bevy::ecs::schedule::ScheduleLabel;
+use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy_rapier2d::prelude::*;
+use bevy_ecs_macros::*;
 use std::collections::HashMap;
 
 pub use common::comms;
@@ -117,11 +117,11 @@ fn discharge_barrel(
     barrel: u16,
     gun: &Gun,
     position: &Transform,
-    velocity: &Velocity,
+    velocity: &LinearVelocity,
     broadcast: &ResMut<Sender>,
 ) {
     let ang = position.rotation.to_euler(EulerRot::ZYX).0;
-    let vel = Velocity::linear(velocity.linvel + Vec2::from_angle(ang) * 450.0);
+    let vel = LinearVelocity(**velocity + glam::f32::Vec2::from_angle(ang) * 450.0);
     let mut transform = position.clone();
     transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
     transform.translation += (Vec2::from_angle(ang).perp()
@@ -133,16 +133,12 @@ fn discharge_barrel(
             let piece = commands.spawn((
                 GamePiece::new(PieceType::Bullet, owner, 0, 0.5),
                 RigidBody::Dynamic,
-                Collider::cuboid(2.5, 2.5),
+                Collider::rectangle(2.5, 2.5),
                 vel,
-                TransformBundle::from(transform),
-                Damping {
-                    linear_damping: 0.0,
-                    angular_damping: 0.0,
-                },
+                transform,
                 TimeToLive { lifetime: range },
                 Bullet { tp: gun.bullets },
-                ActiveEvents::COLLISION_EVENTS,
+                CollisionEventsEnabled,
             ));
             let _ = broadcast.send(ServerMessage::ObjectCreate {
                 x: transform.translation.x,
@@ -157,16 +153,12 @@ fn discharge_barrel(
             let piece = commands.spawn((
                 GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5),
                 RigidBody::Dynamic,
-                Collider::cuboid(5.0, 5.0),
+                Collider::rectangle(5.0, 5.0),
                 vel,
-                TransformBundle::from(transform),
-                Damping {
-                    linear_damping: 0.0,
-                    angular_damping: 0.0,
-                },
+                transform,
                 TimeToLive { lifetime: range },
                 Bullet { tp: gun.bullets },
-                ActiveEvents::COLLISION_EVENTS,
+                CollisionEventsEnabled,
             ));
             let _ = broadcast.send(ServerMessage::ObjectCreate {
                 x: transform.translation.x,
@@ -182,7 +174,7 @@ fn discharge_barrel(
 
 struct EmptyWorld;
 
-impl bevy::ecs::world::Command for EmptyWorld {
+impl Command for EmptyWorld {
     fn apply(self, world: &mut World) {
         world.clear_entities(); // todo: don't clear (or do respawn) things that should stick around, like walls
     }
@@ -195,12 +187,23 @@ pub struct PhysicsSchedule;
 pub struct PlaySchedule;
 
 fn run_play_schedule(world: &mut World) {
-    let state = world
-        .get_resource::<GameState>()
-        .expect("gamestate resource not loaded!");
-    if state.playing && !state.strategy {
-        world.run_schedule(PhysicsSchedule);
+    let (playing, strategy) = {
+        let state = world
+            .get_resource::<GameState>()
+            .expect("gamestate resource not loaded!");
+        (state.playing, state.strategy)
+    };
+    if playing && !strategy {
         world.run_schedule(PlaySchedule);
+        world
+            .get_resource_mut::<Time<Physics>>()
+            .expect("physics time not loaded")
+            .unpause();
+    } else {
+        world
+            .get_resource_mut::<Time<Physics>>()
+            .expect("physics time not loaded")
+            .pause();
     }
 }
 
@@ -211,7 +214,7 @@ fn main() {
         crossbeam::channel::unbounded::<(PlayerId, ServerMessage)>();
 
     std::thread::spawn(move || {
-        let mut server = websocket::Server::new("127.0.0.1:8080").unwrap();
+        let mut server = websocket::Server::new("127.0.0.1:3000").unwrap();
         struct ClientProperties {
             has_tested: bool, // successful test response received
         }
@@ -320,21 +323,11 @@ fn main() {
         }
     });
 
-    let mut config = RapierConfiguration::new(100.0);
-    config.gravity = Vec2 { x: 0.0, y: 0.0 };
     App::new()
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().with_default_system_setup(false))
-        .add_systems(
-            PhysicsSchedule,
-            (
-                RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::SyncBackend)
-                    .in_set(PhysicsSet::SyncBackend),
-                RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::StepSimulation)
-                    .in_set(PhysicsSet::StepSimulation),
-                RapierPhysicsPlugin::<NoUserData>::get_systems(PhysicsSet::Writeback)
-                    .in_set(PhysicsSet::Writeback),
-            ),
-        )
+        .add_plugins(PhysicsPlugins::default())
+        .insert_resource(avian2d::dynamics::solver::SolverDiagnostics::default())
+        .insert_resource(avian2d::collision::CollisionDiagnostics::default())
+        .insert_resource(avian2d::spatial_query::SpatialQueryDiagnostics::default())
         .add_systems(
             PlaySchedule,
             (
@@ -350,27 +343,16 @@ fn main() {
             ),
         )
         .init_schedule(PlaySchedule)
-        .init_schedule(PhysicsSchedule)
-        .edit_schedule(PhysicsSchedule, |schedule| {
-            schedule.configure_sets(
-                (
-                    PhysicsSet::SyncBackend,
-                    PhysicsSet::StepSimulation,
-                    PhysicsSet::Writeback,
-                )
-                    .chain(),
-            );
-        })
         .add_event::<NewClientEvent>()
         .add_event::<ClientKilledEvent>()
         .add_event::<PlaceEvent>()
         .add_event::<ExplosionEvent>()
         .add_event::<PieceDestroyedEvent>()
         .add_event::<LaserCastEvent>()
-        .insert_resource(config)
         .insert_resource(ClientMap(HashMap::new())) // -225, -39.5, -516.9
         .add_plugins(bevy_time::TimePlugin)
         .insert_resource(Receiver(to_bevy_rx))
+        .insert_resource(Gravity(Vec2::new(0.0, 0.0)))
         .insert_resource(Sender(from_bevy_broadcast_tx))
         .insert_resource(GameConfig {
             width: 5000.0,

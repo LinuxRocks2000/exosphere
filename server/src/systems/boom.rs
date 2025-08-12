@@ -14,8 +14,8 @@
 
 use crate::events::*;
 use crate::resources::*;
+use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy_rapier2d::prelude::*;
 use common::comms::ServerMessage;
 
 pub fn boom(
@@ -35,9 +35,9 @@ pub fn boom(
         commands.spawn((
             RigidBody::Dynamic,
             explosion.props,
-            Collider::cuboid(explosion.props.radius, explosion.props.radius),
-            TransformBundle::from(Transform::from_xyz(explosion.x, explosion.y, 0.0)),
-            ActiveEvents::COLLISION_EVENTS,
+            Collider::circle(explosion.props.radius),
+            Transform::from_xyz(explosion.x, explosion.y, 0.0),
+            CollisionEventsEnabled,
         ));
     }
 }

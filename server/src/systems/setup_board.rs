@@ -14,42 +14,34 @@
 
 use crate::components::*;
 use crate::resources::*;
+use avian2d::prelude::*;
 use bevy::prelude::*;
-use bevy_rapier2d::prelude::*;
 
 pub fn setup_board(mut commands: Commands, config: Res<GameConfig>) {
     // set up the gameboard
     // this runs after every board clear
     commands.spawn((
-        RigidBody::Fixed,
+        RigidBody::Static,
         StaticWall {},
-        TransformBundle::from(Transform::from_xyz(config.width / 2.0, -100.0, 0.0)),
-        Collider::cuboid(config.width / 2.0, 100.0),
+        Transform::from_xyz(config.width / 2.0, -100.0, 0.0),
+        Collider::rectangle(config.width / 2.0, 100.0),
     ));
     commands.spawn((
-        RigidBody::Fixed,
+        RigidBody::Static,
         StaticWall {},
-        TransformBundle::from(Transform::from_xyz(
-            config.width / 2.0,
-            config.height + 100.0,
-            0.0,
-        )),
-        Collider::cuboid(config.width / 2.0, 100.0),
+        Transform::from_xyz(config.width / 2.0, config.height + 100.0, 0.0),
+        Collider::rectangle(config.width / 2.0, 100.0),
     ));
     commands.spawn((
-        RigidBody::Fixed,
+        RigidBody::Static,
         StaticWall {},
-        TransformBundle::from(Transform::from_xyz(-100.0, config.height / 2.0, 0.0)),
-        Collider::cuboid(100.0, config.height / 2.0),
+        Transform::from_xyz(-100.0, config.height / 2.0, 0.0),
+        Collider::rectangle(100.0, config.height / 2.0),
     ));
     commands.spawn((
-        RigidBody::Fixed,
+        RigidBody::Static,
         StaticWall {},
-        TransformBundle::from(Transform::from_xyz(
-            config.width + 100.0,
-            config.height / 2.0,
-            0.0,
-        )),
-        Collider::cuboid(100.0, config.height / 2.0),
+        Transform::from_xyz(config.width + 100.0, config.height / 2.0, 0.0),
+        Collider::rectangle(100.0, config.height / 2.0),
     ));
 }

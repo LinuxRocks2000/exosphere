@@ -92,7 +92,7 @@ pub fn client_health_check(
             state.tick = 0;
             state.time_in_stage = config.wait_period;
             state.currently_playing = 0;
-            commands.add(EmptyWorld {});
+            commands.queue(EmptyWorld {});
         }
         if state.currently_playing < config.min_player_slots {
             state.playing = false;
