@@ -28,6 +28,8 @@ pub fn scrapships(
             }
             let seed = ship.seeds_in_range[ship.ind];
             if let Ok(pos) = seeds.get(seed) {
+                println!("firing laser at seed");
+                println!("direction: {:?}", pos.translation - shippos.translation);
                 lasers.write(LaserCastEvent {
                     caster: shipentity,
                     from: shippos.translation.truncate(),

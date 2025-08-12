@@ -23,25 +23,25 @@ pub fn setup_board(mut commands: Commands, config: Res<GameConfig>) {
     commands.spawn((
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width / 2.0, -100.0, 0.0),
-        Collider::rectangle(config.width / 2.0, 100.0),
+        Transform::from_xyz(config.width, -200.0, 0.0),
+        Collider::rectangle(config.width, 200.0),
     ));
     commands.spawn((
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width / 2.0, config.height + 100.0, 0.0),
-        Collider::rectangle(config.width / 2.0, 100.0),
+        Transform::from_xyz(config.width, config.height + 200.0, 0.0),
+        Collider::rectangle(config.width, 200.0),
     ));
     commands.spawn((
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(-100.0, config.height / 2.0, 0.0),
-        Collider::rectangle(100.0, config.height / 2.0),
+        Transform::from_xyz(-200.0, config.height, 0.0),
+        Collider::rectangle(200.0, config.height),
     ));
     commands.spawn((
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width + 100.0, config.height / 2.0, 0.0),
-        Collider::rectangle(100.0, config.height / 2.0),
+        Transform::from_xyz(config.width + 200.0, config.height, 0.0),
+        Collider::rectangle(200.0, config.height),
     ));
 }

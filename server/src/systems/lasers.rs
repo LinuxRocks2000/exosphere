@@ -33,19 +33,32 @@ pub fn lasers(
         } else {
             continue;
         };
-        let filter = SpatialQueryFilter::default();
-        let hit = if let Some(hit) = space_query.cast_ray(
-            cast.from,
-            Dir2::new(cast.dir).expect("invalid direction vector"),
-            cast.max_dist,
-            true,
-            &filter,
-        ) {
-            hit
+        let filter = SpatialQueryFilter::default()
+            .with_excluded_entities([cast.caster])
+            .with_mask(LayerMask::DEFAULT);
+        let dir = if let Ok(dir) = Dir2::new(cast.dir) {
+            dir
         } else {
+            println!("trying to shoot myself");
             continue;
         };
+        let hit =
+            if let Some(hit) = space_query.cast_ray(cast.from, dir, cast.max_dist, true, &filter) {
+                hit
+            } else {
+                let to = cast.from + cast.dir * cast.max_dist;
+                let _ = broadcast.send(ServerMessage::LaserCast {
+                    // TODO: send laser cast broadcasts even if the laser didn't hit anything
+                    caster: cast.caster.into(),
+                    from_x: cast.from.x,
+                    from_y: cast.from.y,
+                    to_x: to.x,
+                    to_y: to.y,
+                });
+                continue;
+            };
         if let Ok(mut piece) = pieces.get_mut(hit.entity) {
+            println!("lasering a piece");
             piece.health -= cast.dmg;
             if let Some(client) = clients.get(&piece.owner) {
                 client.send(ServerMessage::Health {

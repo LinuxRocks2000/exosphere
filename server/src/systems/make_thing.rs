@@ -27,7 +27,7 @@ pub fn setup_sensor_observers(
         PieceType::Farmhouse => {
             sensor.observe(
                 |trigger: Trigger<OnCollisionStart>, mut seeds_query: Query<&mut Seed>| {
-                    let seed = trigger.target();
+                    let seed = trigger.collider;
                     if let Ok(mut seed) = seeds_query.get_mut(seed) {
                         seed.growing = true;
                     }
@@ -35,7 +35,7 @@ pub fn setup_sensor_observers(
             );
             sensor.observe(
                 |trigger: Trigger<OnCollisionEnd>, mut seeds_query: Query<&mut Seed>| {
-                    let seed = trigger.target();
+                    let seed = trigger.collider;
                     if let Ok(mut seed) = seeds_query.get_mut(seed) {
                         seed.growing = false;
                     }
@@ -45,30 +45,28 @@ pub fn setup_sensor_observers(
         PieceType::LaserNode | PieceType::LaserNodeLR => {
             sensor.observe(
                 move |trigger: Trigger<OnCollisionStart>, lasernodes: Query<&LaserNode>| {
-                    if trigger.target() == attach {
+                    if trigger.collider == attach {
                         return;
                     }
-                    if let Ok(other) = lasernodes.get(trigger.target()) {
-                        other.connect(attach);
-                        other.recalculate(&lasernodes);
-                    }
-                    if let Ok(this) = lasernodes.get(attach) {
-                        this.connect(trigger.target());
-                        this.recalculate(&lasernodes);
+                    if let Ok(other) = lasernodes.get(trigger.collider) {
+                        if let Ok(this) = lasernodes.get(attach) {
+                            this.connect(trigger.collider);
+                            this.recalculate(&lasernodes);
+                        }
                     }
                 },
             );
             sensor.observe(
                 move |trigger: Trigger<OnCollisionEnd>, lasernodes: Query<&LaserNode>| {
-                    if trigger.target() == attach {
+                    if trigger.collider == attach {
                         return;
                     }
-                    if let Ok(other) = lasernodes.get(trigger.target()) {
+                    if let Ok(other) = lasernodes.get(trigger.collider) {
                         other.disconnect(attach);
                         other.recalculate(&lasernodes);
                     }
                     if let Ok(this) = lasernodes.get(attach) {
-                        this.disconnect(trigger.target());
+                        this.disconnect(trigger.collider);
                         this.recalculate(&lasernodes);
                     }
                 },
@@ -76,19 +74,29 @@ pub fn setup_sensor_observers(
         }
         PieceType::ScrapShip => {
             sensor.observe(
-                move |trigger: Trigger<OnCollisionStart>, mut ships: Query<&mut ScrapShip>| {
-                    if trigger.target() != attach {
+                move |trigger: Trigger<OnCollisionStart>,
+                      mut ships: Query<&mut ScrapShip>,
+                      things: Query<&Chest>| {
+                    if !things.contains(trigger.collider) {
+                        return;
+                    }
+                    if trigger.collider != attach {
                         if let Ok(mut ship) = ships.get_mut(attach) {
-                            ship.enter(trigger.target());
+                            ship.enter(trigger.collider);
                         }
                     }
                 },
             );
             sensor.observe(
-                move |trigger: Trigger<OnCollisionEnd>, mut ships: Query<&mut ScrapShip>| {
-                    if trigger.target() != attach {
+                move |trigger: Trigger<OnCollisionEnd>,
+                      mut ships: Query<&mut ScrapShip>,
+                      things: Query<&Chest>| {
+                    if !things.contains(trigger.collider) {
+                        return;
+                    }
+                    if trigger.collider != attach {
                         if let Ok(mut ship) = ships.get_mut(attach) {
-                            ship.leave(trigger.target());
+                            ship.leave(trigger.collider);
                         }
                     }
                 },
@@ -98,20 +106,21 @@ pub fn setup_sensor_observers(
         | PieceType::BlastTurret
         | PieceType::LaserTurret
         | PieceType::SmartTurret => {
+            // TODO: enemy/friendly detection FIX THIS QUICKLY!!!!!
             sensor.observe(
                 move |trigger: Trigger<OnCollisionStart>, mut turrets: Query<&mut Turret>| {
-                    if trigger.target() != attach {
+                    if trigger.collider != attach {
                         if let Ok(mut turret) = turrets.get_mut(attach) {
-                            turret.enter(trigger.target());
+                            turret.enter(trigger.collider);
                         }
                     }
                 },
             );
             sensor.observe(
                 move |trigger: Trigger<OnCollisionEnd>, mut turrets: Query<&mut Turret>| {
-                    if trigger.target() != attach {
+                    if trigger.collider != attach {
                         if let Ok(mut turret) = turrets.get_mut(attach) {
-                            turret.leave(trigger.target());
+                            turret.leave(trigger.collider);
                         }
                     }
                 },
@@ -317,6 +326,7 @@ pub fn make_thing(
                 transform,
                 Sensor,
                 CollisionEventsEnabled,
+                CollisionLayers::new(0b0010, LayerMask::ALL),
             ));
             setup_sensor_observers(&ev.tp, id, sensor);
         }

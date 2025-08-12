@@ -116,8 +116,8 @@ impl Shape {
     #[cfg(feature = "server")]
     pub fn to_collider(&self) -> Collider {
         match self {
-            Self::Box(w, h) => Collider::rectangle(*w / 2.0, *h / 2.0),
-            Self::Unimpl => Collider::rectangle(25.0, 25.0), // a bigass "loading failed" that kills things
+            Self::Box(w, h) => Collider::rectangle(*w, *h),
+            Self::Unimpl => Collider::rectangle(50.0, 50.0), // a bigass "loading failed" that kills things
         }
     }
 }
@@ -276,7 +276,7 @@ impl PieceType {
     pub fn shape(&self) -> Shape {
         match self {
             Self::BasicFighter => Shape::Box(41.0, 41.0),
-            Self::Bullet => Shape::Box(5.0, 5.0),
+            Self::Bullet => Shape::Box(10.0, 2.5),
             Self::Castle => Shape::Box(60.0, 60.0),
             Self::TieFighter => Shape::Box(40.0, 50.0),
             Self::Sniper => Shape::Box(60.0, 30.0),

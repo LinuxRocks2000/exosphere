@@ -463,6 +463,7 @@ impl LaserNode {
     }
 
     pub fn connect(&self, thing: Entity) {
+        println!("connected");
         for slot in self.slots.read().unwrap().iter() {
             // don't duplicate connections
             if *slot == thing {

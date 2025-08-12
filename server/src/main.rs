@@ -133,7 +133,7 @@ fn discharge_barrel(
             let piece = commands.spawn((
                 GamePiece::new(PieceType::Bullet, owner, 0, 0.5),
                 RigidBody::Dynamic,
-                Collider::rectangle(2.5, 2.5),
+                PieceType::shape(&PieceType::Bullet).to_collider(),
                 vel,
                 transform,
                 TimeToLive { lifetime: range },
@@ -153,7 +153,7 @@ fn discharge_barrel(
             let piece = commands.spawn((
                 GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5),
                 RigidBody::Dynamic,
-                Collider::rectangle(5.0, 5.0),
+                PieceType::shape(&PieceType::SmallBomb).to_collider(),
                 vel,
                 transform,
                 TimeToLive { lifetime: range },
@@ -214,7 +214,7 @@ fn main() {
         crossbeam::channel::unbounded::<(PlayerId, ServerMessage)>();
 
     std::thread::spawn(move || {
-        let mut server = websocket::Server::new("127.0.0.1:3000").unwrap();
+        let mut server = websocket::Server::new("0.0.0.0:3000").unwrap();
         struct ClientProperties {
             has_tested: bool, // successful test response received
         }
@@ -359,7 +359,7 @@ fn main() {
             height: 5000.0,
             wait_period: 5 * UPDATE_RATE as u16, // todo: config files
             play_period: 20 * UPDATE_RATE as u16,
-            strategy_period: 5 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
+            strategy_period: 10 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
             max_player_slots: 1000,
             min_player_slots: 1,
         })

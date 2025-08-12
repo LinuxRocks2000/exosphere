@@ -389,6 +389,12 @@ impl State {
         self.hovered = None;
         self.hovered_anything = None;
         for obj in self.object_data.values() {
+            if let Some(radius) = obj.tp.sensor() {
+                ctx_stroke(0.5, "#AAAAAA");
+                ctx_outline_circle(obj.x, obj.y, radius);
+            }
+        }
+        for obj in self.object_data.values() {
             let asset = obj.tp.asset();
             let resource = if self.is_friendly(obj.owner) {
                 asset.to_friendly()
