@@ -37,7 +37,7 @@ pub fn client_tick(
     mut state: ResMut<GameState>,
     config: Res<GameConfig>,
     mut clients: ResMut<ClientMap>,
-    mut receiver: ResMut<Receiver>,
+    receiver: ResMut<Receiver>,
     broadcast: ResMut<Sender>,
     mut client_killed: EventWriter<ClientKilledEvent>,
 ) {
