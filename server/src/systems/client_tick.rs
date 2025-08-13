@@ -147,7 +147,7 @@ pub fn client_tick(
                                                         .unwrap()
                                                         .has_placed_castle = true;
                                                     clients.get_mut(&id).unwrap().alive = true;
-                                                    clients.get_mut(&id).unwrap().collect(100);
+                                                    clients.get_mut(&id).unwrap().collect(10000);
                                                     let slot = clients[&id].slot;
                                                     place.castle(x, y, id, slot);
                                                     place.basic_fighter_free(
