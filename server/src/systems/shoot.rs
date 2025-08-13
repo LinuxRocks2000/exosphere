@@ -13,11 +13,82 @@
 // fires bullets from items with guns
 
 use crate::components::*;
-use crate::discharge_barrel;
 use crate::resources::*;
+use crate::PieceType;
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use common::comms::ServerMessage;
+use common::PlayerId;
 use rand::Rng;
+
+#[derive(Copy, Clone)]
+pub enum Bullets {
+    MinorBullet(u16),               // simple bullet with range
+    Bomb(ExplosionProperties, u16), // properties of the explosion we're boutta detonate, range of the bullet
+}
+
+fn discharge_barrel(
+    commands: &mut Commands,
+    owner: PlayerId,
+    barrel: u16,
+    gun: &Gun,
+    position: &Transform,
+    velocity: &LinearVelocity,
+    broadcast: &ResMut<Sender>,
+) {
+    let ang = position.rotation.to_euler(EulerRot::ZYX).0;
+    let vel = LinearVelocity(**velocity + glam::f32::Vec2::from_angle(ang) * 450.0);
+    let mut transform = position.clone();
+    transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
+    transform.translation += (Vec2::from_angle(ang).perp()
+        * gun.barrel_spacing
+        * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5))
+        .extend(0.0);
+    match gun.bullets {
+        Bullets::MinorBullet(range) => {
+            let piece = commands.spawn((
+                GamePiece::new(PieceType::Bullet, owner, 0, 0.5),
+                RigidBody::Dynamic,
+                PieceType::shape(&PieceType::Bullet).to_collider(),
+                vel,
+                transform,
+                TimeToLive { lifetime: range },
+                Bullet { tp: gun.bullets },
+                CollisionEventsEnabled,
+                PresolveVelocity(Vec2::new(0.0, 0.0)),
+            ));
+            let _ = broadcast.send(ServerMessage::ObjectCreate {
+                x: transform.translation.x,
+                y: transform.translation.y,
+                a: ang,
+                owner: PlayerId::SYSTEM,
+                id: piece.id().into(),
+                tp: PieceType::Bullet,
+            });
+        }
+        Bullets::Bomb(_, range) => {
+            let piece = commands.spawn((
+                GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5),
+                RigidBody::Dynamic,
+                PieceType::shape(&PieceType::SmallBomb).to_collider(),
+                vel,
+                transform,
+                TimeToLive { lifetime: range },
+                Bullet { tp: gun.bullets },
+                CollisionEventsEnabled,
+                PresolveVelocity(Vec2::new(0.0, 0.0)),
+            ));
+            let _ = broadcast.send(ServerMessage::ObjectCreate {
+                x: transform.translation.x,
+                y: transform.translation.y,
+                a: ang,
+                owner: PlayerId::SYSTEM,
+                id: piece.id().into(),
+                tp: PieceType::SmallBomb,
+            });
+        }
+    }
+}
 
 pub fn shoot(
     mut commands: Commands,

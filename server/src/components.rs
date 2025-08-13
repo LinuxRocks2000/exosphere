@@ -13,7 +13,7 @@
 // ALL of the component declarations and their respective impls
 
 use crate::solve_spaceship::*;
-use crate::Bullets;
+use crate::systems::shoot::Bullets;
 use bevy::ecs::system::SystemId;
 use bevy::prelude::Component;
 use bevy::prelude::Entity;
@@ -359,15 +359,15 @@ impl SpaceshipKinematics for Ship {
                 Vec2::ZERO
             };
             thrust -= vel.project_onto(offset.perp()) * 0.2; // linear deviation correction thrusters
-            let torque = (-loopify(offset.to_angle(), angle) * 10.0 - angvel * 2.0) * 40.0;
+            let torque = (-loopify(offset.to_angle(), angle) * 10.0 - angvel * 7.0) * 80.0;
             KinematicResult::Thrust(thrust, torque)
         } else {
-            KinematicResult::Done(vel * -0.1, 0.0)
+            KinematicResult::Done(vel * -0.1, 0.0) // simple holding pattern
         }
     }
 
     fn to_angle(&mut self, offset: f32, vel: Vec2, angvel: f32) -> KinematicResult {
-        let torque = (offset * 10.0 - angvel * 2.0) * 40.0;
+        let torque = (offset * 10.0 - angvel * 8.0) * 120.0;
         if offset.abs() < 0.1 {
             KinematicResult::Done(vel * -0.1, torque)
         } else {
@@ -613,3 +613,6 @@ impl Turret {
         }
     }
 }
+
+#[derive(Component)]
+pub struct PresolveVelocity(pub Vec2); // the velocity before the last solver step, useful for collision handling

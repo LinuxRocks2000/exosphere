@@ -21,27 +21,31 @@ pub fn setup_board(mut commands: Commands, config: Res<GameConfig>) {
     // set up the gameboard
     // this runs after every board clear
     commands.spawn((
+        // top
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width, -200.0, 0.0),
+        Transform::from_xyz(config.width / 2.0, -100.0, 0.0),
         Collider::rectangle(config.width, 200.0),
     ));
     commands.spawn((
+        // bottom
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width, config.height + 200.0, 0.0),
+        Transform::from_xyz(config.width / 2.0, config.height + 100.0, 0.0),
         Collider::rectangle(config.width, 200.0),
     ));
     commands.spawn((
+        // left
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(-200.0, config.height, 0.0),
+        Transform::from_xyz(-100.0, config.height / 2.0, 0.0),
         Collider::rectangle(200.0, config.height),
     ));
     commands.spawn((
+        // right
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width + 200.0, config.height, 0.0),
+        Transform::from_xyz(config.width + 100.0, config.height / 2.0, 0.0),
         Collider::rectangle(200.0, config.height),
     ));
 }

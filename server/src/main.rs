@@ -105,73 +105,6 @@ impl Client {
     }
 }
 
-#[derive(Copy, Clone)]
-enum Bullets {
-    MinorBullet(u16),               // simple bullet with range
-    Bomb(ExplosionProperties, u16), // properties of the explosion we're boutta detonate, range of the bullet
-}
-
-fn discharge_barrel(
-    commands: &mut Commands,
-    owner: PlayerId,
-    barrel: u16,
-    gun: &Gun,
-    position: &Transform,
-    velocity: &LinearVelocity,
-    broadcast: &ResMut<Sender>,
-) {
-    let ang = position.rotation.to_euler(EulerRot::ZYX).0;
-    let vel = LinearVelocity(**velocity + glam::f32::Vec2::from_angle(ang) * 450.0);
-    let mut transform = position.clone();
-    transform.translation += (Vec2::from_angle(ang) * gun.center_offset).extend(0.0);
-    transform.translation += (Vec2::from_angle(ang).perp()
-        * gun.barrel_spacing
-        * (barrel as f32 - gun.barrels as f32 / 2.0 + 0.5))
-        .extend(0.0);
-    match gun.bullets {
-        Bullets::MinorBullet(range) => {
-            let piece = commands.spawn((
-                GamePiece::new(PieceType::Bullet, owner, 0, 0.5),
-                RigidBody::Dynamic,
-                PieceType::shape(&PieceType::Bullet).to_collider(),
-                vel,
-                transform,
-                TimeToLive { lifetime: range },
-                Bullet { tp: gun.bullets },
-                CollisionEventsEnabled,
-            ));
-            let _ = broadcast.send(ServerMessage::ObjectCreate {
-                x: transform.translation.x,
-                y: transform.translation.y,
-                a: ang,
-                owner: PlayerId::SYSTEM,
-                id: piece.id().into(),
-                tp: PieceType::Bullet,
-            });
-        }
-        Bullets::Bomb(_, range) => {
-            let piece = commands.spawn((
-                GamePiece::new(PieceType::SmallBomb, owner, 0, 0.5),
-                RigidBody::Dynamic,
-                PieceType::shape(&PieceType::SmallBomb).to_collider(),
-                vel,
-                transform,
-                TimeToLive { lifetime: range },
-                Bullet { tp: gun.bullets },
-                CollisionEventsEnabled,
-            ));
-            let _ = broadcast.send(ServerMessage::ObjectCreate {
-                x: transform.translation.x,
-                y: transform.translation.y,
-                a: ang,
-                owner: PlayerId::SYSTEM,
-                id: piece.id().into(),
-                tp: PieceType::SmallBomb,
-            });
-        }
-    }
-}
-
 struct EmptyWorld;
 
 impl Command for EmptyWorld {
@@ -336,6 +269,7 @@ fn main() {
                 ttl,
                 seed_mature,
                 handle_collisions,
+                handle_destructive_collisions,
                 lasernodes,
                 lasers,
                 scrapships,
@@ -359,7 +293,7 @@ fn main() {
             height: 5000.0,
             wait_period: 5 * UPDATE_RATE as u16, // todo: config files
             play_period: 20 * UPDATE_RATE as u16,
-            strategy_period: 10 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
+            strategy_period: 15 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
             max_player_slots: 1000,
             min_player_slots: 1,
         })
@@ -372,7 +306,11 @@ fn main() {
             currently_attached_players: 0,
             currently_playing: 0,
         })
-        .add_systems(PreUpdate, run_play_schedule)
+        .add_systems(PreUpdate, (run_play_schedule,))
+        .add_systems(
+            FixedPostUpdate,
+            handle_presolve.in_set(avian2d::schedule::PhysicsSet::Prepare),
+        )
         .add_systems(
             Update,
             (

@@ -88,6 +88,7 @@ extern "C" {
     fn add_placemenu_item(row: usize, item: u16, img: &str, name: &str, desc: &str, cost: u32);
     fn clear_piecepicker();
     fn ctx_alpha(alpha: f32);
+    fn ctx_fill_rect(x: f32, y: f32, w: f32, h: f32);
 }
 
 fn send(message: ClientMessage) {
@@ -392,6 +393,22 @@ impl State {
             if let Some(radius) = obj.tp.sensor() {
                 ctx_stroke(0.5, "#AAAAAA");
                 ctx_outline_circle(obj.x, obj.y, radius);
+            }
+            if obj.health < 1.0 {
+                ctx_fill("black");
+                ctx_fill_rect(
+                    obj.x - 50.0,
+                    obj.y - obj.tp.shape().to_bbox().1 - 20.0,
+                    100.0,
+                    10.0,
+                );
+                ctx_fill("red");
+                ctx_fill_rect(
+                    obj.x - 50.0,
+                    obj.y - obj.tp.shape().to_bbox().1 - 20.0,
+                    100.0 * obj.health,
+                    10.0,
+                );
             }
         }
         for obj in self.object_data.values() {

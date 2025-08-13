@@ -145,6 +145,7 @@ pub fn make_thing(
             ExternalForce::default(),
             ExternalImpulse::default(),
             CollisionEventsEnabled, // TODO: clear out unnecessary components from here so we don't have damping, impulse, etc on static bodies
+            PresolveVelocity(Vec2::new(0.0, 0.0)),
         ));
         // fabber check
         let mut isfab = false;
