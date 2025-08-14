@@ -53,7 +53,7 @@ function setup(state) {
     requestAnimationFrame(mainloop);
   };
   document.getElementById("play").onclick = () => {
-    let websocket = new WebSocket(document.getElementById("server").value);
+    let websocket = new WebSocket(document.getElementById("server").innerHTML);
     websocket.onopen = () => {
       mainloop();
       document.getElementById("gameui").style.display = "";

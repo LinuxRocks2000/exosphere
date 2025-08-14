@@ -56,7 +56,7 @@ export function send_ws(data) {
 }
 
 export function get_input_value(id) {
-  return document.getElementById(id).value;
+  return document.getElementById(id).innerText;
 }
 
 export function set_board_size(w, h) {
