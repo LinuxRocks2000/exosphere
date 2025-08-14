@@ -48,7 +48,7 @@ pub fn setup_sensor_observers(
                     if trigger.collider == attach {
                         return;
                     }
-                    if let Ok(other) = lasernodes.get(trigger.collider) {
+                    if let Ok(_) = lasernodes.get(trigger.collider) {
                         if let Ok(this) = lasernodes.get(attach) {
                             this.connect(trigger.collider);
                             this.recalculate(&lasernodes);
@@ -289,6 +289,7 @@ pub fn make_thing(
                         },
                     },
                 ));
+                health = 1.0;
             }
             PieceType::LaserNode => {
                 piece.insert(LaserNode::new(2));

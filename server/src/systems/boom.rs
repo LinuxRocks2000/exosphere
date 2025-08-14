@@ -17,6 +17,7 @@ use crate::resources::*;
 use avian2d::prelude::*;
 use bevy::prelude::*;
 use common::comms::ServerMessage;
+use common::PlayerId;
 
 pub fn boom(
     mut commands: Commands,
@@ -32,12 +33,24 @@ pub fn boom(
             radius: explosion.props.radius,
             damage: explosion.props.damage,
         });
-        commands.spawn((
-            RigidBody::Dynamic,
-            explosion.props,
-            Collider::circle(explosion.props.radius),
-            Transform::from_xyz(explosion.x, explosion.y, 0.0),
-            CollisionEventsEnabled,
-        ));
+        let damage = explosion.props.damage;
+        commands
+            .spawn((
+                RigidBody::Dynamic,
+                explosion.props,
+                Collider::circle(explosion.props.radius),
+                Transform::from_xyz(explosion.x, explosion.y, 0.0),
+                CollisionEventsEnabled,
+                Sensor,
+            ))
+            .observe(
+                move |trigger: Trigger<OnCollisionStart>, mut hurt: EventWriter<PieceHarmEvent>| {
+                    hurt.write(PieceHarmEvent {
+                        piece: trigger.collider,
+                        harm_amount: damage,
+                        responsible: PlayerId::SYSTEM, // TODO: use the actual responsible id
+                    });
+                },
+            );
     }
 }

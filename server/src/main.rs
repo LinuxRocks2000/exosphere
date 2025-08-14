@@ -280,6 +280,7 @@ fn main() {
         .add_event::<NewClientEvent>()
         .add_event::<ClientKilledEvent>()
         .add_event::<PlaceEvent>()
+        .add_event::<PieceHarmEvent>()
         .add_event::<ExplosionEvent>()
         .add_event::<PieceDestroyedEvent>()
         .add_event::<LaserCastEvent>()
@@ -319,6 +320,7 @@ fn main() {
                 position_updates,
                 frame_broadcast.before(position_updates),
                 make_thing,
+                piece_harm,
                 boom,
                 explosion_clear.before(boom).after(handle_collisions),
                 on_piece_dead

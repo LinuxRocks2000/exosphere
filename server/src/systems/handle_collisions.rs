@@ -17,10 +17,8 @@
 
 use crate::components::*;
 use crate::events::*;
-use crate::ClientMap;
 use avian2d::prelude::*;
 use bevy::prelude::*;
-use common::comms::ServerMessage;
 use common::PlayerId;
 
 pub fn handle_collisions(
@@ -97,12 +95,9 @@ pub fn handle_collisions(
 
 pub fn handle_destructive_collisions(
     collisions: Collisions,
-    mut piece_destroy: EventWriter<PieceDestroyedEvent>,
-    mut pieces: Query<(Entity, &mut GamePiece)>,
+    pieces: Query<&GamePiece>,
     velocities: Query<&PresolveVelocity>,
-    explosions: Query<&ExplosionProperties>,
-    clients: Res<ClientMap>,
-    time: Res<Time<Substeps>>,
+    mut harm: EventWriter<PieceHarmEvent>,
 ) {
     let mut one_dmg: f32 = 0.0; // damage to apply to entity 1
     let mut two_dmg: f32 = 0.0; // damage to apply to entity 2
@@ -136,56 +131,26 @@ pub fn handle_destructive_collisions(
             let d = (delta_v - 350.0).sqrt() / 10.0;
             one_dmg = d;
             two_dmg = d;
-            if let Ok((_, piece_one)) = pieces.get(one) {
+            if let Ok(piece_one) = pieces.get(one) {
                 two_killer = piece_one.owner;
             }
-            if let Ok((_, piece_two)) = pieces.get(two) {
+            if let Ok(piece_two) = pieces.get(two) {
                 one_killer = piece_two.owner;
             }
         }
         if one_dmg != 0.0 {
-            if let Ok((entity_one, mut piece_one)) = pieces.get_mut(one) {
-                piece_one.health -= one_dmg;
-                if let Some(client) = clients.get(&piece_one.owner) {
-                    client.send(ServerMessage::Health {
-                        id: entity_one.into(),
-                        health: piece_one.health / piece_one.start_health,
-                    });
-                }
-                if piece_one.health <= 0.0 {
-                    piece_destroy.write(PieceDestroyedEvent {
-                        piece: entity_one,
-                        responsible: one_killer,
-                    });
-                }
-            }
+            harm.write(PieceHarmEvent {
+                piece: one,
+                harm_amount: one_dmg,
+                responsible: one_killer,
+            });
         }
         if two_dmg != 0.0 {
-            if let Ok((entity_two, mut piece_two)) = pieces.get_mut(two) {
-                piece_two.health -= two_dmg;
-                if let Some(client) = clients.get(&piece_two.owner) {
-                    client.send(ServerMessage::Health {
-                        id: entity_two.into(),
-                        health: piece_two.health / piece_two.start_health,
-                    });
-                }
-                if piece_two.health <= 0.0 {
-                    piece_destroy.write(PieceDestroyedEvent {
-                        piece: entity_two,
-                        responsible: two_killer,
-                    });
-                }
-            }
-        }
-        if let Ok(explosion) = explosions.get(one) {
-            if let Ok((_, _)) = pieces.get(two) {
-                two_dmg += explosion.damage;
-            }
-        }
-        if let Ok(explosion) = explosions.get(two) {
-            if let Ok((_, _)) = pieces.get(one) {
-                one_dmg += explosion.damage;
-            }
+            harm.write(PieceHarmEvent {
+                piece: two,
+                harm_amount: two_dmg,
+                responsible: two_killer,
+            });
         }
     }
 }

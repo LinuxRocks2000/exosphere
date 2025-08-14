@@ -76,3 +76,6 @@ pub use client_health_check::*;
 
 pub mod handle_presolve;
 pub use handle_presolve::*;
+
+pub mod piece_harm;
+pub use piece_harm::*;

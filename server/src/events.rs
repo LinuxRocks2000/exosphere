@@ -7,65 +7,68 @@
 
     Exosphere is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General pub(crate)lic License for more details.
 
-    You should have received a copy of the GNU General pub(crate)lic License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
+    You should have received a copy of the GNU General pub(crate)lic License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
 // event structures. NOT event handlers.
 
-use bevy::prelude::Event;
+use crate::components::ExplosionProperties;
 use bevy::prelude::Entity;
+use bevy::prelude::Event;
+use bevy::prelude::Vec2;
 use common::types::PieceType;
 use common::PlayerId;
-use crate::components::ExplosionProperties;
-use bevy::prelude::Vec2;
-
 
 #[derive(Event)]
 pub(crate) struct NewClientEvent {
-    pub(crate) id : PlayerId
+    pub(crate) id: PlayerId,
 }
-
 
 #[derive(Event)]
 pub(crate) struct PlaceEvent {
-    pub(crate) x : f32,
-    pub(crate) y : f32,
-    pub(crate) a : f32,
-    pub(crate) owner : PlayerId,
-    pub(crate) slot : u8,
-    pub(crate) tp : PieceType,
-    pub(crate) free : bool // do we need to fabber check this one? if free is set to true, fabber and territory checks are skipped
+    pub(crate) x: f32,
+    pub(crate) y: f32,
+    pub(crate) a: f32,
+    pub(crate) owner: PlayerId,
+    pub(crate) slot: u8,
+    pub(crate) tp: PieceType,
+    pub(crate) free: bool, // do we need to fabber check this one? if free is set to true, fabber and territory checks are skipped
 }
 
-
 #[derive(Event)]
-pub(crate) struct ClientKilledEvent { // something happened that could have killed a client
+pub(crate) struct ClientKilledEvent {
+    // something happened that could have killed a client
     // we'll healthcheck to see if the client actually died and update game state accordingly
-    pub(crate) client : PlayerId
+    pub(crate) client: PlayerId,
 }
-
 
 #[derive(Event)]
-pub(crate) struct ExplosionEvent { // an explosion was initiated!
-    pub(crate) x : f32,
-    pub(crate) y : f32,
-    pub(crate) props : ExplosionProperties
+pub(crate) struct ExplosionEvent {
+    // an explosion was initiated!
+    pub(crate) x: f32,
+    pub(crate) y: f32,
+    pub(crate) props: ExplosionProperties,
 }
-
 
 #[derive(Event)]
 pub(crate) struct PieceDestroyedEvent {
-    pub(crate) piece : Entity,
-    pub(crate) responsible : PlayerId // the client responsible for this destruction (== the owner of the piece that did fatal damage)
+    pub(crate) piece: Entity,
+    pub(crate) responsible: PlayerId, // the client responsible for this destruction (== the owner of the piece that did fatal damage)
 }
-
 
 #[derive(Event)]
 pub(crate) struct LaserCastEvent {
-    pub(crate) caster : Entity,
-    pub(crate) from : Vec2,
-    pub(crate) dir : Vec2,
-    pub(crate) max_dist : f32,
-    pub(crate) dmg : f32,
-    pub(crate) exclusive : Option<Entity> // if there's an exclusive target set, the laser will not be cast unless doing so would damage the target
+    pub(crate) caster: Entity,
+    pub(crate) from: Vec2,
+    pub(crate) dir: Vec2,
+    pub(crate) max_dist: f32,
+    pub(crate) dmg: f32,
+    pub(crate) exclusive: Option<Entity>, // if there's an exclusive target set, the laser will not be cast unless doing so would damage the target
+}
+
+#[derive(Event)]
+pub(crate) struct PieceHarmEvent {
+    pub(crate) piece: Entity,
+    pub(crate) harm_amount: f32,
+    pub(crate) responsible: PlayerId,
 }

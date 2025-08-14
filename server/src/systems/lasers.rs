@@ -21,11 +21,10 @@ use common::comms::*;
 
 pub fn lasers(
     mut events: EventReader<LaserCastEvent>,
-    mut pieces: Query<&mut GamePiece>,
+    pieces: Query<&GamePiece>,
     broadcast: ResMut<Sender>,
     space_query: SpatialQuery,
-    clients: Res<ClientMap>,
-    mut piece_destroy: EventWriter<PieceDestroyedEvent>,
+    mut hurt: EventWriter<PieceHarmEvent>,
 ) {
     for cast in events.read() {
         let cast_owner = if let Ok(piece) = pieces.get(cast.caster) {
@@ -57,22 +56,11 @@ pub fn lasers(
                 });
                 continue;
             };
-        if let Ok(mut piece) = pieces.get_mut(hit.entity) {
-            println!("lasering a piece");
-            piece.health -= cast.dmg;
-            if let Some(client) = clients.get(&piece.owner) {
-                client.send(ServerMessage::Health {
-                    id: hit.entity.into(),
-                    health: piece.health / piece.start_health,
-                });
-            }
-            if piece.health <= 0.0 {
-                piece_destroy.write(PieceDestroyedEvent {
-                    piece: hit.entity,
-                    responsible: cast_owner,
-                });
-            }
-        }
+        hurt.write(PieceHarmEvent {
+            piece: hit.entity,
+            harm_amount: cast.dmg,
+            responsible: cast_owner,
+        });
         let to = cast.from + cast.dir * hit.distance;
         let _ = broadcast.send(ServerMessage::LaserCast {
             // TODO: send laser cast broadcasts even if the laser didn't hit anything
