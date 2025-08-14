@@ -20,7 +20,7 @@ pub fn turrets(
     mut turrets: Query<(
         &mut Turret,
         &GamePiece,
-        &mut ExternalTorque,
+        &mut ExternalAngularImpulse,
         &Transform,
         &AngularVelocity,
     )>,
@@ -32,7 +32,7 @@ pub fn turrets(
                 if turret_piece.owner == piece.owner
                     || (turret_piece.slot > 1 && turret_piece.slot == piece.slot)
                 {
-                    continue;
+                    //continue; // TODO: UNCOMMENT THIS!!!!
                 }
                 if turret.targeting_algorithm.will_attack(piece.tp) {
                     let ang = turret.targeting_algorithm.get_target_angle(
@@ -40,8 +40,7 @@ pub fn turrets(
                         piece.c_vel,
                     );
                     let c_ang = turret_pos.rotation.to_euler(EulerRot::ZYX).0;
-                    torque.apply_torque(
-                        // POSSIBLY USE set_torque INSTEAD!
+                    torque.set_impulse(
                         turret
                             .targeting_algorithm
                             .swivel_kinematics(loopify(c_ang, ang), **turret_angvel),

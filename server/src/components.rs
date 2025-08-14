@@ -531,7 +531,7 @@ pub trait TargetingAlgorithm {
     fn get_target_angle(&self, off_vec: Vec2, other_vel: Vec2) -> f32;
 
     fn swivel_kinematics(&self, offset: f32, vel: f32) -> f32 {
-        (offset * 100.0 - vel * vel * vel * 20.0) * 1600.0
+        (offset * 20.0 - vel.cbrt() * 5.0) * 20000.0
     }
 }
 
@@ -565,6 +565,7 @@ impl TargetingAlgorithm for SmartTargeting {
         const BULLET_SPEED: f32 = 7.5; // if you're using this later for something else, please for the love of god figure out how to do magic on inertial properties
                                        // this is really getting out of hand
                                        // (7.5 was calculated by printing out bullet deltas)
+                                       // TODO: recalculate BULLET_SPEED, it's probably wrong now
         let a = vel.dot(vel) - BULLET_SPEED * BULLET_SPEED;
         let b = 2.0 * vel.dot(off_vec);
         let c = off_vec.dot(off_vec);
