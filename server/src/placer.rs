@@ -37,6 +37,18 @@ impl Placer<'_> {
         });
     }
 
+    pub(crate) fn sniper_free(&mut self, x: f32, y: f32, a: f32, client: PlayerId, slot: u8) {
+        self.0.write(PlaceEvent {
+            x,
+            y,
+            a,
+            owner: client,
+            slot,
+            tp: PieceType::Sniper,
+            free: true,
+        });
+    }
+
     pub(crate) fn small_lasernode_free(&mut self, x: f32, y: f32, client: PlayerId, slot: u8) {
         self.0.write(PlaceEvent {
             x,

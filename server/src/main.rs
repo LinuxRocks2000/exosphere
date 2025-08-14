@@ -269,8 +269,8 @@ fn main() {
                 shoot,
                 ttl,
                 seed_mature,
-                handle_collisions,
-                handle_destructive_collisions,
+                (handle_collisions, handle_destructive_collisions).before(handle_presolve),
+                handle_presolve,
                 lasernodes,
                 lasers,
                 scrapships,
@@ -302,10 +302,6 @@ fn main() {
             currently_playing: 0,
         })
         .add_systems(PreUpdate, (run_play_schedule,))
-        .add_systems(
-            FixedPostUpdate,
-            handle_presolve.in_set(avian2d::schedule::PhysicsSet::Prepare),
-        )
         .add_systems(
             Update,
             (

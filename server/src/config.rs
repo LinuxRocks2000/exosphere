@@ -27,7 +27,7 @@ pub struct InitItemDescriptor {
 }
 
 impl InitItemDescriptor {
-    pub fn place(
+    pub(crate) fn place(
         &self,
         placer: &mut Placer,
         root_x: f32,
@@ -45,6 +45,12 @@ impl InitItemDescriptor {
             }
             "castle" => {
                 placer.castle(x, y, client, slot);
+            }
+            "sniper" => {
+                placer.sniper_free(x, y, a, client, slot);
+            }
+            "lasernode_small" => {
+                placer.small_lasernode_free(x, y, client, slot);
             }
             _ => {
                 panic!("unknown placer type code {}", self.tp);

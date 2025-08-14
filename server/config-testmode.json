@@ -1,9 +1,9 @@
 {
   "game_address": "0.0.0.0:3000",
   "times": {
-    "wait_period": 150,
-    "strategy_period": 300,
-    "play_period": 600
+    "wait_period": 2,
+    "strategy_period": 150,
+    "play_period": 300
   },
   "counts": {
     "min_players": 1,
