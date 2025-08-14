@@ -19,21 +19,21 @@ use common::comms::ServerMessage;
 pub fn frame_broadcast(
     broadcast: ResMut<Sender>,
     mut state: ResMut<GameState>,
-    config: Res<GameConfig>,
+    config: Res<Config>,
 ) {
     if state.playing {
         state.tick += 1;
         if state.tick > state.time_in_stage {
             state.strategy = !state.strategy;
             if state.strategy {
-                state.time_in_stage = config.strategy_period;
+                state.time_in_stage = config.times.strategy_period;
             } else {
-                state.time_in_stage = config.play_period;
+                state.time_in_stage = config.times.play_period;
             }
             state.tick = 0;
         }
     } else {
-        if state.currently_playing >= config.min_player_slots {
+        if state.currently_playing >= config.counts.min_players {
             state.tick += 1;
         } else {
             state.tick = 0;

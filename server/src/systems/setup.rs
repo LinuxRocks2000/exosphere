@@ -12,15 +12,18 @@
 
 // resets the game
 
-use crate::components::*;
 use crate::resources::*;
 use crate::systems::*;
 use bevy::prelude::*;
 
-pub fn setup(mut commands: Commands, mut state: ResMut<GameState>, config: Res<GameConfig>) {
-    // todo: construct board (walls, starting rubble, etc)
+pub fn setup(
+    mut commands: Commands,
+    mut state: ResMut<GameState>,
+    config: Res<Config>,
+    mut one_shots: ResMut<OneShots>,
+) {
     state.tick = 0;
-    state.time_in_stage = config.wait_period;
+    state.time_in_stage = config.times.wait_period;
     let system = commands.register_system(setup_board);
-    commands.spawn(BoardSetup(system));
+    one_shots.board_setup = Some(system);
 }

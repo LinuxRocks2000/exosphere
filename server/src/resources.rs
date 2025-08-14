@@ -11,24 +11,14 @@
 */
 
 use crate::comms::*;
+pub use crate::config::Config;
 use crate::Client;
 use crate::Comms;
+use bevy::ecs::system::SystemId;
 use bevy::prelude::*;
 use common::comms::Stage;
 use common::PlayerId;
 use std::collections::HashMap;
-
-// todo: break up GameConfig and GameState into smaller structs for better parallelism
-#[derive(Resource)]
-pub struct GameConfig {
-    pub width: f32,
-    pub height: f32,
-    pub wait_period: u16,     // time it waits before the game starts
-    pub play_period: u16,     // length of a play period
-    pub strategy_period: u16, // length of a strategy period
-    pub max_player_slots: u16,
-    pub min_player_slots: u16,
-}
 
 #[derive(Resource)]
 pub struct GameState {
@@ -63,3 +53,8 @@ pub struct Receiver(pub crossbeam::channel::Receiver<Comms>);
 
 #[derive(Resource, Deref, DerefMut)]
 pub struct Sender(pub crossbeam::channel::Sender<ServerMessage>);
+
+#[derive(Resource, Default)]
+pub struct OneShots {
+    pub board_setup: Option<SystemId>,
+}

@@ -35,7 +35,7 @@ pub fn client_tick(
     mut ev_newclient: EventWriter<NewClientEvent>,
     place: EventWriter<PlaceEvent>,
     mut state: ResMut<GameState>,
-    config: Res<GameConfig>,
+    config: Res<Config>,
     mut clients: ResMut<ClientMap>,
     receiver: ResMut<Receiver>,
     broadcast: ResMut<Sender>,
@@ -82,7 +82,7 @@ pub fn client_tick(
                                 } => {
                                     // TODO: IMPLEMENT PASSWORD
                                     let slot: u8 = if state.currently_attached_players
-                                        < config.max_player_slots
+                                        < config.counts.max_players
                                     {
                                         1
                                     } else {
@@ -100,8 +100,8 @@ pub fn client_tick(
                                     }
                                     clients.get_mut(&id).unwrap().send(ServerMessage::Metadata {
                                         id,
-                                        board_width: config.width,
-                                        board_height: config.height,
+                                        board_width: config.board.width,
+                                        board_height: config.board.height,
                                         slot,
                                     });
                                     if let Err(_) = broadcast.send(ServerMessage::PlayerData {
@@ -147,37 +147,15 @@ pub fn client_tick(
                                                         .unwrap()
                                                         .has_placed_castle = true;
                                                     clients.get_mut(&id).unwrap().alive = true;
-                                                    clients.get_mut(&id).unwrap().collect(10000);
+                                                    clients
+                                                        .get_mut(&id)
+                                                        .unwrap()
+                                                        .collect(config.client_setup.money);
                                                     let slot = clients[&id].slot;
-                                                    place.castle(x, y, id, slot);
-                                                    place.basic_fighter_free(
-                                                        x - 200.0,
-                                                        y,
-                                                        PI,
-                                                        id,
-                                                        slot,
-                                                    );
-                                                    place.basic_fighter_free(
-                                                        x + 200.0,
-                                                        y,
-                                                        0.0,
-                                                        id,
-                                                        slot,
-                                                    );
-                                                    place.basic_fighter_free(
-                                                        x,
-                                                        y - 200.0,
-                                                        0.0,
-                                                        id,
-                                                        slot,
-                                                    );
-                                                    place.basic_fighter_free(
-                                                        x,
-                                                        y + 200.0,
-                                                        0.0,
-                                                        id,
-                                                        slot,
-                                                    );
+                                                    for thing in config.client_setup.area.iter() {
+                                                        thing
+                                                            .place(&mut place, x, y, 0.0, id, slot);
+                                                    }
                                                 }
                                             }
                                         }

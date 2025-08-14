@@ -32,7 +32,6 @@ use std::sync::RwLock;
 pub(crate) struct GamePiece {
     pub(crate) tp: PieceType, // the type of this piece
     // assigned by the gamepiece builder functions
-    // todo: do this a better way
     pub(crate) owner: PlayerId, // entry in the Clients hashmap
     pub(crate) slot: u8,        // identity slot of the owner
     // in the future, we may want to eliminate this and instead do lookups in the HashMap (which is swisstable, so it's pretty fast)
@@ -247,9 +246,6 @@ pub(crate) struct CollisionExplosion {
     // entities with this component explode whenever they hit anything
     pub(crate) explosion: ExplosionProperties,
 }
-
-#[derive(Component)]
-pub struct BoardSetup(pub SystemId);
 
 #[derive(Copy, Clone, Component)]
 pub struct ExplosionProperties {

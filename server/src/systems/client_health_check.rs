@@ -27,7 +27,7 @@ pub fn client_health_check(
     mut clients: ResMut<ClientMap>,
     pieces: Query<(Option<&Territory>, &GamePiece, Entity)>,
     mut state: ResMut<GameState>,
-    config: Res<GameConfig>,
+    config: Res<Config>,
 ) {
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
@@ -90,14 +90,14 @@ pub fn client_health_check(
             state.playing = false;
             state.strategy = false;
             state.tick = 0;
-            state.time_in_stage = config.wait_period;
+            state.time_in_stage = config.times.wait_period;
             state.currently_playing = 0;
             commands.queue(EmptyWorld {});
         }
-        if state.currently_playing < config.min_player_slots {
+        if state.currently_playing < config.counts.min_players {
             state.playing = false;
             state.tick = 0;
-            state.time_in_stage = config.wait_period;
+            state.time_in_stage = config.times.wait_period;
             state.strategy = false;
         }
     }

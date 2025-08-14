@@ -10,9 +10,6 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
-// TODO TODO TODO: fix the sensor leak: when a sensored thing dies, its sensor persists. the sensor doesn't do anything because of attachment checks, but it's still *there*
-// wasting memory and cpu cycles.
-
 // TODO: fix the ghost bug (under some circumstances, cleanup doesn't seem to correctly delete some pieces, leaving "ghosts" that persist until server reset)
 
 // note:
@@ -63,6 +60,8 @@ use resources::*;
 pub mod placer;
 use placer::*;
 
+pub mod config;
+
 pub mod websocket;
 
 pub struct Client {
@@ -109,7 +108,9 @@ struct EmptyWorld;
 
 impl Command for EmptyWorld {
     fn apply(self, world: &mut World) {
-        world.clear_entities(); // todo: don't clear (or do respawn) things that should stick around, like walls
+        world.clear_entities();
+        let one_shots: &OneShots = world.get_resource().unwrap();
+        world.run_system(one_shots.board_setup.unwrap()).unwrap();
     }
 }
 
@@ -288,16 +289,9 @@ fn main() {
         .add_plugins(bevy_time::TimePlugin)
         .insert_resource(Receiver(to_bevy_rx))
         .insert_resource(Gravity(Vec2::new(0.0, 0.0)))
+        .insert_resource(OneShots::default())
         .insert_resource(Sender(from_bevy_broadcast_tx))
-        .insert_resource(GameConfig {
-            width: 5000.0,
-            height: 5000.0,
-            wait_period: 1 * UPDATE_RATE as u16, // todo: config files
-            play_period: 10 * UPDATE_RATE as u16,
-            strategy_period: 5 * UPDATE_RATE as u16, // [2024-11-21] it's always a "joy" reading comments I wrote months ago.
-            max_player_slots: 1000,
-            min_player_slots: 1,
-        })
+        .insert_resource(config::read_config_panicky())
         .insert_resource(GameState {
             playing: false,
             io: true,

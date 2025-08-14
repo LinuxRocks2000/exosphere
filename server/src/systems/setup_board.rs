@@ -13,39 +13,46 @@
 // sets up the board after board clearing
 
 use crate::components::*;
+use crate::events::*;
+use crate::placer::Placer;
 use crate::resources::*;
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use common::PlayerId;
 
-pub fn setup_board(mut commands: Commands, config: Res<GameConfig>) {
+pub fn setup_board(mut commands: Commands, config: Res<Config>, place: EventWriter<PlaceEvent>) {
     // set up the gameboard
     // this runs after every board clear
     commands.spawn((
         // top
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width / 2.0, -100.0, 0.0),
-        Collider::rectangle(config.width, 200.0),
+        Transform::from_xyz(config.board.width / 2.0, -100.0, 0.0),
+        Collider::rectangle(config.board.width, 200.0),
     ));
     commands.spawn((
         // bottom
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width / 2.0, config.height + 100.0, 0.0),
-        Collider::rectangle(config.width, 200.0),
+        Transform::from_xyz(config.board.width / 2.0, config.board.height + 100.0, 0.0),
+        Collider::rectangle(config.board.width, 200.0),
     ));
     commands.spawn((
         // left
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(-100.0, config.height / 2.0, 0.0),
-        Collider::rectangle(200.0, config.height),
+        Transform::from_xyz(-100.0, config.board.height / 2.0, 0.0),
+        Collider::rectangle(200.0, config.board.height),
     ));
     commands.spawn((
         // right
         RigidBody::Static,
         StaticWall {},
-        Transform::from_xyz(config.width + 100.0, config.height / 2.0, 0.0),
-        Collider::rectangle(200.0, config.height),
+        Transform::from_xyz(config.board.width + 100.0, config.board.height / 2.0, 0.0),
+        Collider::rectangle(200.0, config.board.height),
     ));
+    let mut placer = Placer(place);
+    for thing in &config.board.things {
+        thing.place(&mut placer, 0.0, 0.0, 0.0, PlayerId::SYSTEM, 0);
+    }
 }
