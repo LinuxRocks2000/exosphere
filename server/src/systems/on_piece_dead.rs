@@ -24,6 +24,7 @@ pub fn on_piece_dead(
     mut commands: Commands,
     broadcast: ResMut<Sender>,
     pieces: Query<&GamePiece>,
+    sensored: Query<&Sensored>,
     bullets: Query<(&Bullet, &Transform)>,
     chests: Query<&Chest>,
     mut events: EventReader<PieceDestroyedEvent>,
@@ -53,6 +54,9 @@ pub fn on_piece_dead(
                 });
             }
             commands.entity(evt.piece).despawn();
+            if let Ok(s) = sensored.get(evt.piece) {
+                commands.entity(s.sensor).despawn(); // despawn attached sensors
+            }
             if let Err(_) = broadcast.send(ServerMessage::DeleteObject {
                 id: evt.piece.into(),
             }) {

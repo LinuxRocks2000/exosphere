@@ -67,7 +67,6 @@ pub(crate) struct Territory {
 
 impl Territory {
     pub(crate) fn castle() -> Self {
-        // TODO: make this meaningful
         Self { radius: 600.0 }
     }
 }
@@ -562,10 +561,7 @@ impl TargetingAlgorithm for SmartTargeting {
 
     fn get_target_angle(&self, off_vec: Vec2, vel: Vec2) -> f32 {
         // see https://www.gamedev.net/forums/topic/582894-target-leading-in-2d/
-        const BULLET_SPEED: f32 = 7.5; // if you're using this later for something else, please for the love of god figure out how to do magic on inertial properties
-                                       // this is really getting out of hand
-                                       // (7.5 was calculated by printing out bullet deltas)
-                                       // TODO: recalculate BULLET_SPEED, it's probably wrong now
+        const BULLET_SPEED: f32 = 450.0 / 30.0;
         let a = vel.dot(vel) - BULLET_SPEED * BULLET_SPEED;
         let b = 2.0 * vel.dot(off_vec);
         let c = off_vec.dot(off_vec);
@@ -619,3 +615,9 @@ impl Turret {
 
 #[derive(Component)]
 pub struct PresolveVelocity(pub Vec2); // the velocity before the last solver step, useful for collision handling
+
+#[derive(Component)]
+pub struct Sensored {
+    // an object with a sensor attached
+    pub sensor: Entity,
+}

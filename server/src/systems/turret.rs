@@ -32,7 +32,7 @@ pub fn turrets(
                 if turret_piece.owner == piece.owner
                     || (turret_piece.slot > 1 && turret_piece.slot == piece.slot)
                 {
-                    //continue; // TODO: UNCOMMENT THIS!!!!
+                    continue;
                 }
                 if turret.targeting_algorithm.will_attack(piece.tp) {
                     let ang = turret.targeting_algorithm.get_target_angle(

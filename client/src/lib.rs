@@ -139,6 +139,7 @@ struct ObjectData {
 
 impl ObjectData {
     // TODO: make the path functions not spam the server with path updates (some kind of update-cache, mayhaps?)
+    // [2025-8-14] this probably isn't really a problem
     fn path_iter<'a>(&'a self) -> PathIter<'a> {
         self.path.iter()
     }
@@ -395,19 +396,19 @@ impl State {
                 ctx_outline_circle(obj.x, obj.y, radius);
             }
             if obj.health < 1.0 {
-                ctx_fill("black");
+                ctx_fill("#AAAAAA");
                 ctx_fill_rect(
-                    obj.x - 50.0,
+                    obj.x - 37.5,
                     obj.y - obj.tp.shape().to_bbox().1 - 20.0,
-                    100.0,
-                    10.0,
+                    75.0,
+                    5.0,
                 );
                 ctx_fill("red");
                 ctx_fill_rect(
-                    obj.x - 50.0,
+                    obj.x - 37.5,
                     obj.y - obj.tp.shape().to_bbox().1 - 20.0,
-                    100.0 * obj.health,
-                    10.0,
+                    75.0 * obj.health,
+                    5.0,
                 );
             }
         }

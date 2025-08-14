@@ -106,7 +106,6 @@ pub fn setup_sensor_observers(
         | PieceType::BlastTurret
         | PieceType::LaserTurret
         | PieceType::SmartTurret => {
-            // TODO: enemy/friendly detection FIX THIS QUICKLY!!!!!
             sensor.observe(
                 move |trigger: Trigger<OnCollisionStart>, mut turrets: Query<&mut Turret>| {
                     if trigger.collider != attach {
@@ -330,7 +329,9 @@ pub fn make_thing(
                 CollisionEventsEnabled,
                 CollisionLayers::new(0b0010, LayerMask::ALL),
             ));
+            let oid = sensor.id();
             setup_sensor_observers(&ev.tp, id, sensor);
+            commands.entity(id).insert(Sensored { sensor: oid });
         }
     }
 }

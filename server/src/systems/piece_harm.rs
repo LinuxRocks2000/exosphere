@@ -15,7 +15,7 @@ pub fn piece_harm(
     for event in hurt.read() {
         if let Ok(mut piece) = pieces.get_mut(event.piece) {
             piece.health -= event.harm_amount;
-            if let Some(client) = clients.get(&event.responsible) {
+            if let Some(client) = clients.get(&piece.owner) {
                 client.send(ServerMessage::Health {
                     id: event.piece.into(),
                     health: piece.health / piece.start_health,

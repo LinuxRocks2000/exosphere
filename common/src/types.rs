@@ -13,27 +13,18 @@
 // Piece type definitions and helper functions.
 
 /* HOW TO ADD NEW TYPES
-  In the client
     1. Draw the sprites for your type. You have quite a bit of freedom here; the typical pattern is a type_name_friendly and a type_name_enemy sprite with appropriate colors
        (see the top of main.js in the client).
-    2. Import assets. Inside index.html there is a hidden div#res. Put <img>s for all of your sprites in there, with IDs corresponding to the filename (for instance,
-       res/cruise_missile_friendly.svg would have the id cruise_missile_friendly).
-    3. Add a drawing overload. There's a large block of if statements in main.js::mainloop, inside a forEach over every piece on the board. Each one of these corresponds
-       to a type identifier (TODO: clean up main.js). The getRes function grabs an image by id from the div#res, and caches them in a JavaScript object for very fast future
-       accesses. While not particularly more useful than document.getElementById, reliable use of getRes allows for a lazy-loading paradigm to be implemented eventually with
-       minimal pain, so be sure to use it. the fString variable contains either "enemy" or "friendly" and should be directly appended to your type id, like
-       `"cruise_missile_" + fString`.
-    4. IF you want it to be user placeable, add it to the piece selector block. There's a template in the html.
-    5. IF you want it to have standard control semantics (control nodes), add its type id to function canUpdateStrategy in main.js.
-  In the backend
-    1. Add the variant for your type to the PieceType enum. Make sure it's directly tagged with a number; put it at the bottom of the list regardless of logical positioning
-       so it stays clear which numbers correspond to which types for other contributors.
-    2. IF you want it to be user placeable, add it to the match statements in PieceType::price, PieceType::user_placeable, and PlaceType::fabber.
-       It's important that you don't miss any of these; they default to not user placeable with a price of 0, which can cause bugs if neglected.
-    3. Add it to the match statement in main.rs::make_thing. This should at the MINIMUM create a collider with the size of the units (Collider::cuboid uses half-lengths, so
+    2. Add the variant for your type to the PieceType enum.
+    3. Import assets. Go into PieceType::asset() below and add another match arm with your filenames. Go into PieceType::shape() below and define the collision shape.
+    4. IF you want it to be user placeable, add it to PieceType::user_placeable(). Add the price to to PieceType::price(), and the fabber characteristics to
+        PieceType::fabber().
+    5. IF you want it to have standard control semantics (control nodes), add it to PieceType::user_movable().
+    6. Add it to the match statement in main.rs::make_thing. This should at the MINIMUM create a collider with the size of the units (Collider::cuboid uses half-lengths, so
        make sure to divide by 2 on both dimensions lest your pieces be four times as large as expected). For it to be useful, you'll usually want some other components -
        see components.rs for what's already available, and add your own there if you see fit. If you want very custom semantics, you'll need to either create some new
        systems or modify already-extant systems; get familiar with Bevy ECS and the Exosphere source before doing so.
+    7. look through the other functions: you can assign sensors and other such things this way.
 
   Make sure to document your new type in the `techtree` file in the project root. It should always be the authoritative source on game mechanics.
 */

@@ -10,9 +10,6 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
-// TODO: break up into small systems rather than this behemoth
-// TODO: use Observers (OnCollisionStart) rather than buffered events for some types of collision
-
 // collision handler systems
 
 use crate::components::*;

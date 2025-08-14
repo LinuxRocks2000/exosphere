@@ -47,7 +47,6 @@ pub fn lasers(
             } else {
                 let to = cast.from + cast.dir * cast.max_dist;
                 let _ = broadcast.send(ServerMessage::LaserCast {
-                    // TODO: send laser cast broadcasts even if the laser didn't hit anything
                     caster: cast.caster.into(),
                     from_x: cast.from.x,
                     from_y: cast.from.y,
@@ -63,7 +62,6 @@ pub fn lasers(
         });
         let to = cast.from + cast.dir * hit.distance;
         let _ = broadcast.send(ServerMessage::LaserCast {
-            // TODO: send laser cast broadcasts even if the laser didn't hit anything
             caster: cast.caster.into(),
             from_x: cast.from.x,
             from_y: cast.from.y,
