@@ -247,7 +247,7 @@ fn main() {
         }
     });
 
-    let conf = config::read_config_panicky();
+    let conf = config::read_config_or_default();
 
     App::new()
         .add_plugins(PhysicsPlugins::default())
