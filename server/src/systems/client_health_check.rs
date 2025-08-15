@@ -15,7 +15,6 @@
 use crate::components::*;
 use crate::events::*;
 use crate::resources::*;
-use crate::EmptyWorld;
 use bevy::prelude::*;
 use common::comms::ServerMessage;
 use common::PlayerId;
@@ -48,25 +47,14 @@ pub fn client_health_check(
                 state.currently_playing -= 1;
                 clients[&ev.client].send(ServerMessage::YouLose);
                 clients.get_mut(&ev.client).unwrap().alive = false;
-                if clients[&ev.client].id != PlayerId::SYSTEM {
-                    for (_, piece, entity) in pieces.iter() {
-                        if piece.owner == clients[&ev.client].id {
-                            piece_kill.write(PieceDestroyedEvent {
-                                piece: entity.into(),
-                                responsible: ev.client,
-                            });
-                        }
-                    }
-                }
             }
-        } else {
-            for (_, piece, entity) in pieces.iter() {
-                if piece.owner == ev.client {
-                    piece_kill.write(PieceDestroyedEvent {
-                        piece: entity.into(),
-                        responsible: ev.client,
-                    });
-                }
+        }
+        for (_, piece, entity) in pieces.iter() {
+            if piece.owner == ev.client {
+                piece_kill.write(PieceDestroyedEvent {
+                    piece: entity.into(),
+                    responsible: ev.client,
+                });
             }
         }
         did_something = true;
@@ -92,7 +80,6 @@ pub fn client_health_check(
             state.tick = 0;
             state.time_in_stage = config.times.wait_period;
             state.currently_playing = 0;
-            commands.queue(EmptyWorld {});
         }
         if state.currently_playing < config.counts.min_players {
             state.playing = false;

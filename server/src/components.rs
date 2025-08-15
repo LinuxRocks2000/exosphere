@@ -14,7 +14,6 @@
 
 use crate::solve_spaceship::*;
 use crate::systems::shoot::Bullets;
-use bevy::ecs::system::SystemId;
 use bevy::prelude::Component;
 use bevy::prelude::Entity;
 use bevy::prelude::Query;

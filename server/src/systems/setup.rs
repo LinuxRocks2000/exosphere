@@ -16,14 +16,17 @@ use crate::resources::*;
 use crate::systems::*;
 use bevy::prelude::*;
 
-pub fn setup(
-    mut commands: Commands,
-    mut state: ResMut<GameState>,
-    config: Res<Config>,
-    mut one_shots: ResMut<OneShots>,
-) {
-    state.tick = 0;
-    state.time_in_stage = config.times.wait_period;
-    let system = commands.register_system(setup_board);
-    one_shots.board_setup = Some(system);
+pub fn setup(world: &mut World) {
+    println!("setup");
+    let wait_period = {
+        let config: &Config = world.get_resource().unwrap();
+        config.times.wait_period
+    };
+    {
+        let mut state = world.get_resource_mut::<GameState>().unwrap();
+        state.tick = 0;
+        state.time_in_stage = wait_period;
+    }
+    let system = world.register_system(setup_board);
+    world.get_resource_mut::<OneShots>().unwrap().board_setup = Some(system);
 }

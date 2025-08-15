@@ -104,16 +104,6 @@ impl Client {
     }
 }
 
-struct EmptyWorld;
-
-impl Command for EmptyWorld {
-    fn apply(self, world: &mut World) {
-        world.clear_entities();
-        let one_shots: &OneShots = world.get_resource().unwrap();
-        world.run_system(one_shots.board_setup.unwrap()).unwrap();
-    }
-}
-
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PhysicsSchedule;
 
@@ -257,6 +247,8 @@ fn main() {
         }
     });
 
+    let conf = config::read_config_panicky();
+
     App::new()
         .add_plugins(PhysicsPlugins::default())
         .insert_resource(avian2d::dynamics::solver::SolverDiagnostics::default())
@@ -291,16 +283,16 @@ fn main() {
         .insert_resource(Gravity(Vec2::new(0.0, 0.0)))
         .insert_resource(OneShots::default())
         .insert_resource(Sender(from_bevy_broadcast_tx))
-        .insert_resource(config::read_config_panicky())
         .insert_resource(GameState {
             playing: false,
-            io: true,
+            io: conf.game_type == "io",
             strategy: false,
             tick: 0,
             time_in_stage: 0,
             currently_attached_players: 0,
             currently_playing: 0,
         })
+        .insert_resource(conf)
         .add_systems(PreUpdate, (run_play_schedule,))
         .add_systems(
             Update,

@@ -79,6 +79,7 @@ pub struct Config {
     pub counts: PlayerCountConfig,
     pub board: BoardConfig,
     pub client_setup: ClientSetupConfig,
+    pub game_type: String, // "io" or "normal"
 }
 
 pub fn read_config_panicky() -> Config {

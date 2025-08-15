@@ -1,5 +1,6 @@
 {
   "game_address": "0.0.0.0:3000",
+  "game_type": "normal",
   "times": {
     "wait_period": 2,
     "strategy_period": 300,
