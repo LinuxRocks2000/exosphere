@@ -63,10 +63,6 @@ function setup(state) {
       alert("connection error");
       window.location.reload();
     };
-    websocket.onclose = () => {
-      alert("disconnected");
-      window.location.reload();
-    };
     websocket.onmessage = async (msg) => {
       let bytes = new Uint8Array(await msg.data.arrayBuffer());
       window.exosphere.state.on_message(bytes);

@@ -13,13 +13,16 @@
 use common::comms::*;
 use common::pathfollower::{PathFollower, PathIter, PathNode};
 use common::steal_mut;
-use common::types::Asset;
 use common::types::PieceType;
 use common::VERSION;
 use common::{PieceId, PlayerId};
 use num_traits::cast::FromPrimitive;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
+// TODO: refactor this whole thing to use bevy
+// pretty important
+// right now this code is unstable, hard to understand, and calls common::steal_mut *multiple times*.
+// it is essentially impossible to maintain in any coherent way. a move to ECS is necessary.
 
 const PLACE_MENU: [&'static [PieceType]; 4] = [
     &[
@@ -89,6 +92,8 @@ extern "C" {
     fn clear_piecepicker();
     fn ctx_alpha(alpha: f32);
     fn ctx_fill_rect(x: f32, y: f32, w: f32, h: f32);
+    fn reload();
+    fn draw_text_box(x: f32, y: f32, lines: Vec<String>);
 }
 
 fn send(message: ClientMessage) {
@@ -427,37 +432,35 @@ impl State {
                 let mut running_x = obj.x;
                 let mut running_y = obj.y;
                 ctx_stroke(1.0, "white");
-                if obj.tp.user_movable() {
-                    for node in obj.path_iter() {
-                        let (x, y) = match node {
-                            PathNode::StraightTo(x, y) => (x, y),
-                            PathNode::Target(piece) => {
-                                if let Some(piece) = self.object_data.get(&piece) {
-                                    (piece.x, piece.y)
-                                } else {
-                                    (running_x, running_y)
-                                }
-                            }
-                            PathNode::Rotation(a, _) => {
-                                ctx_draw_image(
-                                    "rotation_arrow.svg",
-                                    running_x,
-                                    running_y,
-                                    a,
-                                    30.0,
-                                    30.0,
-                                );
+                for node in obj.path_iter() {
+                    let (x, y) = match node {
+                        PathNode::StraightTo(x, y) => (x, y),
+                        PathNode::Target(piece) => {
+                            if let Some(piece) = self.object_data.get(&piece) {
+                                (piece.x, piece.y)
+                            } else {
                                 (running_x, running_y)
                             }
-                        };
-                        ctx_fill("white");
-                        ctx_fill_circle(x, y, 1.0);
-                        if running_x != x || running_y != y {
-                            ctx_line_between(running_x, running_y, x, y);
                         }
-                        running_x = x;
-                        running_y = y;
+                        PathNode::Rotation(a, _) => {
+                            ctx_draw_image(
+                                "rotation_arrow.svg",
+                                running_x,
+                                running_y,
+                                a,
+                                30.0,
+                                30.0,
+                            );
+                            (running_x, running_y)
+                        }
+                    };
+                    ctx_fill("white");
+                    ctx_fill_circle(x, y, 1.0);
+                    if running_x != x || running_y != y {
+                        ctx_line_between(running_x, running_y, x, y);
                     }
+                    running_x = x;
+                    running_y = y;
                 }
 
                 let mut dx = self.inputs.mouse_x - obj.x;
@@ -500,6 +503,24 @@ impl State {
                         ctx_outline_circle(obj.x, obj.y, field);
                     }
                 }
+            }
+            let dx = self.inputs.mouse_x - obj.x;
+            let dy = self.inputs.mouse_y - obj.y;
+
+            if dx * dx + dy * dy < 6.0 * 6.0 && obj.owner != self.id {
+                draw_text_box(
+                    self.inputs.mouse_x,
+                    self.inputs.mouse_y,
+                    vec![
+                        if self.is_friendly(obj.owner) {
+                            "FRIENDLY"
+                        } else {
+                            "ENEMY"
+                        }
+                        .to_string(),
+                        self.player_data[&obj.owner].name.clone(),
+                    ],
+                );
             }
         }
         set_offset(self.off_x, self.off_y);
@@ -901,6 +922,24 @@ impl State {
                         rad: radius,
                         age: 2,
                     });
+                }
+                ServerMessage::Disconnect => {
+                    // the server is signalling that we will be disconnected. we don't get a choice in the matter
+                    // eventually this might do something on the client side; for now it's a no-op
+                }
+                ServerMessage::Winner { id } => {
+                    // TODO: win screen
+                    if self.id == id {
+                        alert("you won!");
+                    } else {
+                        alert(&format!("{:?} won!", id));
+                    }
+                    reload();
+                }
+                ServerMessage::YouLose => {
+                    // todo: loss screen
+                    alert("you lost");
+                    reload();
                 }
                 _ => {
                     alert(&format!("bad protocol frame {:?}", message));

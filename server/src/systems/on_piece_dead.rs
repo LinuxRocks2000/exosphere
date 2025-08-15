@@ -55,7 +55,6 @@ pub fn on_piece_dead(
             }
             commands.entity(evt.piece).despawn();
             if let Ok(s) = sensored.get(evt.piece) {
-                println!("despawning sensor");
                 commands.entity(s.sensor).despawn(); // despawn attached sensors
             }
             if let Err(_) = broadcast.send(ServerMessage::DeleteObject {

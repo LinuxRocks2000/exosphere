@@ -17,7 +17,6 @@ use crate::systems::*;
 use bevy::prelude::*;
 
 pub fn setup(world: &mut World) {
-    println!("setup");
     let wait_period = {
         let config: &Config = world.get_resource().unwrap();
         config.times.wait_period

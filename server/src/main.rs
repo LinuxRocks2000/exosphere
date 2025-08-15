@@ -234,6 +234,10 @@ fn main() {
             loop {
                 match from_bevy_specific_rx.try_recv() {
                     Ok((id, message)) => {
+                        if let ServerMessage::Disconnect = message {
+                            // disconnects aren't optional; we're going to send a message, then immediately drop the client
+                            server.close(id.into());
+                        }
                         server.send_to(id.into(), message);
                     }
                     Err(crossbeam::channel::TryRecvError::Empty) => {

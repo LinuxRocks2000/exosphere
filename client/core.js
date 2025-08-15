@@ -169,3 +169,33 @@ export function clear_piecepicker() {
 export function ctx_alpha(alpha) {
   window.exosphere.ctx.globalAlpha = alpha;
 }
+
+export function reload() {
+  window.location.reload();
+}
+
+export function draw_text_box(x, y, lines) {
+  let max_width = 10;
+  window.exosphere.ctx.font = "10px monospace";
+  lines.forEach((line) => {
+    let metrics = window.exosphere.ctx.measureText(line);
+    if (metrics.width > max_width) {
+      max_width = metrics.width;
+    }
+  });
+  window.exosphere.ctx.fillStyle = "white";
+  x -= max_width + 10;
+  y -= lines.length * 11;
+  window.exosphere.ctx.fillRect(
+    x - 3,
+    y - 3,
+    max_width + 6,
+    lines.length * 13 + 6,
+  );
+  let rolling_height = 0;
+  window.exosphere.ctx.fillStyle = "black";
+  lines.forEach((line) => {
+    window.exosphere.ctx.fillText(line, x, y + rolling_height + 10);
+    rolling_height += 13;
+  });
+}

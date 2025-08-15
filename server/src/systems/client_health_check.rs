@@ -79,7 +79,6 @@ pub fn client_health_check(
             state.strategy = false;
             state.tick = 0;
             state.time_in_stage = config.times.wait_period;
-            state.currently_playing = 0;
         }
         if state.currently_playing < config.counts.min_players {
             state.playing = false;

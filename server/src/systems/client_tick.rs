@@ -65,10 +65,9 @@ pub fn client_tick(
                         if clients[&id].connected {
                             state.currently_attached_players -= 1;
                         }
-                        /*if clients[&id].alive {
+                        if clients[&id].alive {
                             state.currently_playing -= 1;
-                        }*/
-                        println!("current players: {:?}", state.currently_playing);
+                        }
                         clients.remove(&id);
                         client_killed.write(ClientKilledEvent { client: id });
                     }

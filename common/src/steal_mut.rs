@@ -4,23 +4,20 @@
 
 // evade memory protections. turn an &-reference into an &mut-reference naively, without any regard for human life.
 
-
 struct InvarianceBreaker<T> {
-    invariant : T
+    invariant: T,
 }
 
-
-impl<T> InvarianceBreaker<T> { // what is this?
+impl<T> InvarianceBreaker<T> {
+    // what is this?
     // rust is VERY careful about preventing you from casting immutable to mutable, and the static analyzer is smart.
     // you can transmute the fuckin' *const pointer to usize and then transmute the usize to *mut, and it will *still* catch that
     // as being a cast from & to &mut. so there's... this.
     // this class ensures that your usize from the first `transmute` is moved out of the original function scope into our purdy little InvarianceBreaker,
     // and then the InvarianceBreaker is consumed to return your usize (or whatever). because it's moved around in memory multiple times, that little
     // usize is now impossible to identify (by the static analyzer, anyways) as being originally a *const pointer, so you can cast it to *mut
-    unsafe fn new(d : T) -> Self {
-        Self {
-            invariant : d
-        }
+    unsafe fn new(d: T) -> Self {
+        Self { invariant: d }
     }
 
     unsafe fn shatter(self) -> T {
@@ -28,8 +25,7 @@ impl<T> InvarianceBreaker<T> { // what is this?
     }
 }
 
-
-pub fn steal_mut<T>(t : &T) -> &mut T {
+pub fn steal_mut<T>(t: &T) -> &mut T {
     // you probably read the function signature and immediately went "uh-oh".
     // yeah, it ain't good
     // this is an unsafe (and private) helper to cast an immutable reference to... a mutable one.
@@ -45,9 +41,16 @@ pub fn steal_mut<T>(t : &T) -> &mut T {
     // update 2025-4-30: I have no idea what the fuck I was talking about here.
     //                   RefCell and other interior mutability systems are cheap enough that their overhead will never matter.
     //                   This function will be kept for historical value, but of high priority is removing every use from the code.
+    //
+    // [2025-8-15] what even is this? why is this a thing? what the fuckety fuck?
+    //             apparently there are still FOUR instances of steal_mut being used in production code.
+    //             the best part is, it's mostly client code, which hasn't been cleaned or even slightly refactored in...
+    //             years. I actually have no idea what most of the things in there do.
+    //             if I delete steal_mut, or even make it unsafe, will that break something? who knows.
+    //             this is wrong and bad and anyone who ever uses it should be arrested.
     return unsafe {
         let raw = t as *const T;
         let even_rawer = InvarianceBreaker::new(std::mem::transmute::<*const T, usize>(raw));
         &mut *(std::mem::transmute::<usize, *mut T>(even_rawer.shatter()))
-    }
+    };
 }
