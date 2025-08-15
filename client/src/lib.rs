@@ -213,6 +213,7 @@ struct State {
     lasers: Vec<Laser>,
     explosions: Vec<Explosion>,
     gun_states: HashMap<PieceId, bool>,
+    is_placeable: bool,
 }
 
 const SCROLL_ACC: f32 = 0.3;
@@ -363,6 +364,7 @@ impl State {
             lasers: vec![],
             explosions: vec![],
             gun_states: HashMap::new(),
+            is_placeable: false,
         }
     }
 
@@ -560,20 +562,34 @@ impl State {
             explosion.age > 0
         });
         if let Some(tp) = self.piecepicker {
-            ctx_alpha(0.5);
-            let wh = tp.shape().to_bbox();
-            ctx_draw_image(
-                tp.asset().to_friendly(),
-                self.inputs.mouse_x,
-                self.inputs.mouse_y,
-                0.0,
-                wh.0,
-                wh.1,
-            );
-            ctx_alpha(1.0);
-            if let Some(field) = tp.field() {
-                ctx_stroke(1.0, "white");
-                ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, field);
+            self.is_placeable = !self.has_placed;
+            for (piece, fabber) in &self.fabber_data {
+                let obj = &self.object_data[piece];
+                if obj.owner == self.id {
+                    let dx = self.inputs.mouse_x - obj.x;
+                    let dy = self.inputs.mouse_y - obj.y;
+                    if dx * dx + dy * dy < fabber.radius * fabber.radius {
+                        self.is_placeable = true;
+                        break;
+                    }
+                }
+            }
+            if self.is_placeable {
+                ctx_alpha(0.5);
+                let wh = tp.shape().to_bbox();
+                ctx_draw_image(
+                    tp.asset().to_friendly(),
+                    self.inputs.mouse_x,
+                    self.inputs.mouse_y,
+                    0.0,
+                    wh.0,
+                    wh.1,
+                );
+                ctx_alpha(1.0);
+                if let Some(field) = tp.field() {
+                    ctx_stroke(1.0, "white");
+                    ctx_outline_circle(self.inputs.mouse_x, self.inputs.mouse_y, field);
+                }
             }
         } else {
             ctx_stroke(2.0, "white");
@@ -592,10 +608,12 @@ impl State {
             if let Stage::MoveShips = self.stage {
                 if let Some(piece) = self.piecepicker {
                     if self.money >= piece.price() {
-                        self.place(piece);
-                        if !self.inputs.key("Shift") {
-                            self.piecepicker = None;
-                            clear_piecepicker();
+                        if self.is_placeable {
+                            self.place(piece);
+                            if !self.inputs.key("Shift") {
+                                self.piecepicker = None;
+                                clear_piecepicker();
+                            }
                         }
                     }
                 } else if self.hovered.is_none()

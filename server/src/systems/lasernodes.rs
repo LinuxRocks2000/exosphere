@@ -23,7 +23,7 @@ pub fn lasernodes(
     mut laser_cast: EventWriter<LaserCastEvent>,
 ) {
     for (entity, _, node, position) in lasernodes.iter() {
-        for x in 0..node.allowable.min(node.slots.read().unwrap().len()) {
+        for x in 0..node.slots.read().unwrap().len() {
             if let Ok((_, opiece, _, otherposition)) =
                 lasernodes.get(*node.slots.read().unwrap().get(x).unwrap())
             {
