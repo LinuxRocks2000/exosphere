@@ -460,8 +460,8 @@ impl State {
                     }
                 }
 
-                let dx = self.inputs.mouse_x - obj.x;
-                let dy = self.inputs.mouse_y - obj.y;
+                let mut dx = self.inputs.mouse_x - obj.x;
+                let mut dy = self.inputs.mouse_y - obj.y;
 
                 if dx * dx + dy * dy < 6.0 * 6.0 && obj.tp.user_movable() {
                     if obj.owner == self.id {
@@ -472,8 +472,8 @@ impl State {
                 if self.active_piece == Some(obj.id) {
                     ctx_stroke(2.0, "white");
                     ctx_outline_circle(running_x, running_y, 5.0);
-                    let dx = self.inputs.mouse_x - running_x;
-                    let dy = self.inputs.mouse_y - running_y;
+                    dx = self.inputs.mouse_x - running_x;
+                    dy = self.inputs.mouse_y - running_y;
                 }
                 if self.inputs.key("r") {
                     if let None = self.updating_node {

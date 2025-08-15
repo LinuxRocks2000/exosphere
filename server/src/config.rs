@@ -143,13 +143,13 @@ impl Default for Config {
                     InitItemDescriptor {
                         tp: "basic_fighter".to_string(),
                         x: 0.0,
-                        y: 200.0,
+                        y: -200.0,
                         a: Some(270.0),
                     },
                     InitItemDescriptor {
                         tp: "basic_fighter".to_string(),
                         x: 0.0,
-                        y: -200.0,
+                        y: 200.0,
                         a: Some(90.0),
                     },
                     InitItemDescriptor {
