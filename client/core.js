@@ -199,3 +199,10 @@ export function draw_text_box(x, y, lines) {
     rolling_height += 13;
   });
 }
+
+export function screen(panel) {
+  for (let el of document.querySelectorAll("body > div")) {
+    el.style.display = "none";
+  }
+  document.getElementById(panel).style.display = "";
+}

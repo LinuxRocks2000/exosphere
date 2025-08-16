@@ -75,6 +75,7 @@ pub struct ClientSetupConfig {
 #[derive(Deserialize, Serialize, Resource)]
 pub struct Config {
     pub game_address: String,
+    pub password: Option<String>,
     pub times: TimesConfig,
     pub counts: PlayerCountConfig,
     pub board: BoardConfig,
@@ -111,6 +112,7 @@ impl Default for Config {
         Self {
             game_address: "0.0.0.0:3000".to_string(),
             game_type: "normal".to_string(),
+            password: None,
             times: TimesConfig {
                 wait_period: 300,
                 play_period: 600,

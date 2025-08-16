@@ -52,12 +52,15 @@ function setup(state) {
     exosphere.ctx.translate(-offX, -offY);
     requestAnimationFrame(mainloop);
   };
+  document.getElementById("password-submit").onclick = () => {
+    window.exosphere.state.on_password_submit(
+      document.getElementById("password").innerText,
+    );
+  };
   document.getElementById("play").onclick = () => {
-    let websocket = new WebSocket(document.getElementById("server").innerHTML);
+    let websocket = new WebSocket(document.getElementById("server").innerText);
     websocket.onopen = () => {
       mainloop();
-      document.getElementById("gameui").style.display = "";
-      document.getElementById("loginmenu").style.display = "none";
     };
     websocket.onerror = () => {
       alert("connection error");

@@ -160,3 +160,8 @@ h1 {
     color: white;
     font-weight: bold;
 }
+
+#password-challenge {
+    background-color: black;
+    color: white;
+}

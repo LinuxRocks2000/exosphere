@@ -20,6 +20,50 @@ use crate::Placer;
 use bevy::prelude::*;
 use common::comms::*;
 use common::types::*;
+use common::PlayerId;
+
+fn setup_client(
+    // TODO: do fewer hash table lookups
+    id: PlayerId,
+    ev_newclient: &mut EventWriter<NewClientEvent>,
+    state: &mut GameState,
+    config: &Config,
+    clients: &mut ClientMap,
+    broadcast: &mut Sender,
+) {
+    let slot: u8 = if state.currently_attached_players < config.counts.max_players {
+        1
+    } else {
+        0
+    }; // todo: implement teams
+    for k in clients.keys() {
+        if *k != id {
+            let message = ServerMessage::PlayerData {
+                id: *k,
+                nickname: clients[k].nickname.clone(),
+                slot: clients[k].slot,
+            };
+            clients[&id].send(message);
+        }
+    }
+    clients.get_mut(&id).unwrap().send(ServerMessage::Metadata {
+        id,
+        board_width: config.board.width,
+        board_height: config.board.height,
+        slot,
+    });
+    if let Err(_) = broadcast.send(ServerMessage::PlayerData {
+        id,
+        nickname: clients[&id].nickname.clone(),
+        slot,
+    }) {
+        println!("couldn't broadcast player data");
+    }
+    state.currently_attached_players += 1;
+    clients.get_mut(&id).unwrap().slot = slot;
+    clients.get_mut(&id).unwrap().connected = true;
+    ev_newclient.write(NewClientEvent { id });
+}
 
 pub fn client_tick(
     mut commands: Commands,
@@ -37,7 +81,7 @@ pub fn client_tick(
     config: Res<Config>,
     mut clients: ResMut<ClientMap>,
     receiver: ResMut<Receiver>,
-    broadcast: ResMut<Sender>,
+    mut broadcast: ResMut<Sender>,
     mut client_killed: EventWriter<ClientKilledEvent>,
 ) {
     let mut place = Placer(place);
@@ -75,46 +119,42 @@ pub fn client_tick(
                         let mut kill = false;
                         if clients.contains_key(&id) {
                             match msg {
-                                ClientMessage::Connect {
-                                    nickname,
-                                    password: _password,
-                                } => {
-                                    // TODO: IMPLEMENT PASSWORD
-                                    let slot: u8 = if state.currently_attached_players
-                                        < config.counts.max_players
-                                    {
-                                        1
+                                ClientMessage::Connect { nickname } => {
+                                    clients.get_mut(&id).unwrap().nickname = nickname;
+                                    if let None = config.password {
+                                        setup_client(
+                                            id,
+                                            &mut ev_newclient,
+                                            &mut state,
+                                            &config,
+                                            &mut clients,
+                                            &mut broadcast,
+                                        );
                                     } else {
-                                        0
-                                    }; // todo: implement teams
-                                    for k in clients.keys() {
-                                        if *k != id {
-                                            let message = ServerMessage::PlayerData {
-                                                id: *k,
-                                                nickname: clients[k].nickname.clone(),
-                                                slot: clients[k].slot,
-                                            };
-                                            clients[&id].send(message);
+                                        clients
+                                            .get_mut(&id)
+                                            .unwrap()
+                                            .send(ServerMessage::PasswordChallenge);
+                                    }
+                                }
+                                ClientMessage::TryPassword { password } => {
+                                    if let Some(p) = &config.password {
+                                        if p == &password {
+                                            setup_client(
+                                                id,
+                                                &mut ev_newclient,
+                                                &mut state,
+                                                &config,
+                                                &mut clients,
+                                                &mut broadcast,
+                                            );
+                                        } else {
+                                            clients
+                                                .get_mut(&id)
+                                                .unwrap()
+                                                .send(ServerMessage::Reject);
                                         }
                                     }
-                                    clients.get_mut(&id).unwrap().send(ServerMessage::Metadata {
-                                        id,
-                                        board_width: config.board.width,
-                                        board_height: config.board.height,
-                                        slot,
-                                    });
-                                    if let Err(_) = broadcast.send(ServerMessage::PlayerData {
-                                        id,
-                                        nickname: nickname.clone(),
-                                        slot,
-                                    }) {
-                                        println!("couldn't broadcast player data");
-                                    }
-                                    state.currently_attached_players += 1;
-                                    clients.get_mut(&id).unwrap().slot = slot;
-                                    clients.get_mut(&id).unwrap().nickname = nickname;
-                                    clients.get_mut(&id).unwrap().connected = true;
-                                    ev_newclient.write(NewClientEvent { id });
                                 }
                                 ClientMessage::PlacePiece { x, y, tp } => {
                                     if tp == PieceType::Castle {

@@ -94,6 +94,7 @@ extern "C" {
     fn ctx_fill_rect(x: f32, y: f32, w: f32, h: f32);
     fn reload();
     fn draw_text_box(x: f32, y: f32, lines: Vec<String>);
+    fn screen(scr: &str);
 }
 
 fn send(message: ClientMessage) {
@@ -508,19 +509,21 @@ impl State {
             let dy = self.inputs.mouse_y - obj.y;
 
             if dx * dx + dy * dy < 6.0 * 6.0 && obj.owner != self.id {
-                draw_text_box(
-                    self.inputs.mouse_x,
-                    self.inputs.mouse_y,
-                    vec![
-                        if self.is_friendly(obj.owner) {
-                            "FRIENDLY"
-                        } else {
-                            "ENEMY"
-                        }
-                        .to_string(),
-                        self.player_data[&obj.owner].name.clone(),
-                    ],
-                );
+                if let Some(player) = self.player_data.get(&obj.owner) {
+                    draw_text_box(
+                        self.inputs.mouse_x,
+                        self.inputs.mouse_y,
+                        vec![
+                            if self.is_friendly(obj.owner) {
+                                "FRIENDLY"
+                            } else {
+                                "ENEMY"
+                            }
+                            .to_string(),
+                            player.name.clone(),
+                        ],
+                    );
+                }
             }
         }
         set_offset(self.off_x, self.off_y);
@@ -809,6 +812,10 @@ impl State {
                     self.id = id;
                     self.slot = slot;
                     set_board_size(board_width, board_height);
+                    screen("gameui");
+                }
+                ServerMessage::PasswordChallenge => {
+                    screen("password-challenge");
                 }
                 ServerMessage::GameState {
                     stage,
@@ -941,6 +948,10 @@ impl State {
                     alert("you lost");
                     reload();
                 }
+                ServerMessage::Reject => {
+                    alert("invalid password!");
+                    reload();
+                }
                 _ => {
                     alert(&format!("bad protocol frame {:?}", message));
                 }
@@ -978,7 +989,6 @@ impl State {
                     ));
                     send(ClientMessage::Connect {
                         nickname: get_input_value("nickname"),
-                        password: "".to_string(),
                     });
                     self.has_tested = true;
                     return;
@@ -986,5 +996,9 @@ impl State {
             }
             alert(&format!("server failed verification: {:?}", message));
         }
+    }
+
+    pub fn on_password_submit(&self, password: String) {
+        send(ClientMessage::TryPassword { password });
     }
 }

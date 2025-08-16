@@ -27,6 +27,11 @@
             <p><b>Nickname: </b><span contenteditable class="input" id="nickname" oninput="saveinputstate(this);"></p>
             <button id="play">Play</button>
         </div>
+        <div id="password-challenge" style="display: none">
+            <h1>Password Required</h1>
+            <p><b>Password: </b><span contenteditable class="input" id="password"></span></p>
+            <button id="password-submit">Play</button>
+        </div>
         <div id="gameui" style="display: none">
             <div id="readouts">
                 <div id="timebar"><span id="phase"></span> <span id="curtime"></span> / <span id="stagetime"></span></span></div>
