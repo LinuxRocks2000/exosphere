@@ -10,36 +10,37 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
-// handle pieces being hurt
-
 use crate::components::*;
 use crate::events::*;
 use crate::resources::*;
 use bevy::prelude::*;
 use common::comms::ServerMessage;
 
-pub fn piece_harm(
-    mut hurt: EventReader<PieceHarmEvent>,
-    mut destroy: EventWriter<PieceDestroyedEvent>,
-    mut pieces: Query<&mut GamePiece>,
-    clients: Res<ClientMap>,
+pub fn client_connection(
+    mut events: EventReader<ClientConnectEvent>,
+    mut commands: Commands,
+    config: Res<Config>,
     channels: Query<&ClientChannel>,
+    cl: Query<&Client>,
+    mut success: EventWriter<ClientSuccessfullyJoinedEvent>,
 ) {
-    for event in hurt.read() {
-        if let Ok(mut piece) = pieces.get_mut(event.piece) {
-            piece.health -= event.harm_amount;
-            if let Some(client) = clients.get(&piece.owner) {
-                channels.get(*client).unwrap().send(ServerMessage::Health {
-                    id: event.piece.into(),
-                    health: piece.health / piece.start_health,
-                });
-            }
-            if piece.health <= 0.0 {
-                destroy.write(PieceDestroyedEvent {
-                    piece: event.piece,
-                    responsible: event.responsible,
-                });
-            }
+    for ClientConnectEvent(client, nickname) in events.read() {
+        let id = cl.get(*client).unwrap().id;
+        commands.entity(*client).insert(ClientMeta {
+            id,
+            nickname: nickname.clone(),
+        });
+        if let Some(teams) = &config.teams {
+        } else if let Some(_) = config.password {
+            channels
+                .get(*client)
+                .unwrap()
+                .send(ServerMessage::PasswordChallenge);
+        } else {
+            commands
+                .entity(*client)
+                .insert(ClientAffiliation { slot: 1 });
+            success.write(ClientSuccessfullyJoinedEvent(*client));
         }
     }
 }

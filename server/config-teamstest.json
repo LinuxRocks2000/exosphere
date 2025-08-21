@@ -1,0 +1,64 @@
+{
+  "game_address": "0.0.0.0:3000",
+  "game_type": "normal",
+  "teams": [
+    {
+      "slot": 2,
+      "name": "Red Team",
+      "password": "red"
+    },
+    {
+      "slot": 3,
+      "name": "Blue Team",
+      "password": "blue"
+    }
+  ],
+  "times": {
+    "wait_period": 2,
+    "strategy_period": 300,
+    "play_period": 300
+  },
+  "counts": {
+    "min_players": 1,
+    "max_players": 1000
+  },
+  "board": {
+    "width": 2000,
+    "height": 2000,
+    "things": []
+  },
+  "client_setup": {
+    "money": 100000,
+    "area": [
+      {
+        "tp": "castle",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "tp": "basic_fighter",
+        "x": 200,
+        "y": 0,
+        "a": 0
+      },
+      {
+        "tp": "basic_fighter",
+        "x": 0,
+        "y": -200,
+        "a": 270
+      },
+      {
+        "tp": "basic_fighter",
+        "x": -200,
+        "y": 0,
+        "a": 180
+      },
+      {
+        "tp": "basic_fighter",
+        "x": 0,
+        "y": 200,
+        "a": 90
+      }
+    ]
+  }
+}

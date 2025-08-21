@@ -12,7 +12,6 @@
 
 use crate::comms::*;
 pub use crate::config::Config;
-use crate::Client;
 use crate::Comms;
 use bevy::ecs::system::SystemId;
 use bevy::prelude::*;
@@ -46,7 +45,7 @@ impl GameState {
 }
 
 #[derive(Resource, Deref, DerefMut)]
-pub struct ClientMap(pub HashMap<PlayerId, Client>);
+pub struct ClientMap(pub HashMap<PlayerId, Entity>);
 
 #[derive(Resource, Deref, DerefMut)] // todo: better names (or generic type arguments)
 pub struct Receiver(pub crossbeam::channel::Receiver<Comms>);

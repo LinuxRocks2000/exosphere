@@ -21,6 +21,19 @@ use crate::PlayerId;
 use bitcode::{Decode, Encode};
 
 #[derive(Debug, Encode, Decode, PartialEq)]
+pub enum StrategyPathModification {
+    Insert(PieceId, u16, PathNode),
+    Clear(PieceId),
+    Set(PieceId, u16, PathNode),
+    Delete(PieceId, u16),
+}
+
+#[derive(Debug, Encode, Decode, PartialEq)]
+pub enum ObjectSpecialPropertySet {
+    GunState(bool),
+}
+
+#[derive(Debug, Encode, Decode, PartialEq)]
 pub enum ClientMessage {
     // client -> server
     Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. See ServerMessage.
@@ -47,27 +60,13 @@ pub enum ClientMessage {
     // attempt to place an object
     // before the client can place anything else, it must place a castle (type 1). this is the only time in the game that a client can place an object in neutral territory.
     // obviously it's not possible to place a castle in enemy territory
-    StrategyInsert {
-        piece: PieceId,
-        index: u16,
-        node: PathNode,
+    Strategy {
+        evt: StrategyPathModification,
     },
-    StrategySet {
-        piece: PieceId,
-        index: u16,
-        node: PathNode,
+    Special {
+        id: PieceId,
+        evt: ObjectSpecialPropertySet,
     },
-    StrategyDelete {
-        piece: PieceId,
-        index: u16,
-    },
-    StrategyClear {
-        piece: PieceId,
-    },
-    GunState {
-        piece: PieceId,
-        enabled: bool,
-    }, // change the state of a gun.
 }
 
 // upon connecting, the server immediately sends the client Test("EXOSPHERE", 128, 4096, 115600, 123456789012345, -64, -4096, -115600, -123456789012345, -4096.512, -8192.756, VERSION)

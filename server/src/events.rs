@@ -12,6 +12,8 @@
 
 // event structures. NOT event handlers.
 
+pub use crate::client_events::*;
+
 use crate::components::ExplosionProperties;
 use bevy::prelude::Entity;
 use bevy::prelude::Event;

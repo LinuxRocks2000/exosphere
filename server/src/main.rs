@@ -35,7 +35,10 @@ use comms::{ClientMessage, ServerMessage};
 
 pub enum Comms {
     // webserver -> game engine
-    ClientConnect(Client),                // (client) a client connected
+    ClientConnect(
+        PlayerId,
+        crossbeam::channel::Sender<(PlayerId, ServerMessage)>,
+    ), // (client) a client connected
     ClientDisconnect(PlayerId),           // (id) a client disconnected
     MessageFrom(PlayerId, ClientMessage), // (id, message) a client sent a message that was successfully decoded and filtered
 }
@@ -49,7 +52,6 @@ pub mod consts;
 use consts::*;
 
 pub mod components;
-use components::*;
 
 mod systems;
 use systems::*;
@@ -58,51 +60,15 @@ pub mod resources;
 use resources::*;
 
 pub mod placer;
-use placer::*;
 
 pub mod config;
 
 pub mod websocket;
 
-pub struct Client {
-    id: PlayerId,
-    nickname: String,
-    slot: u8,
-    channel: crossbeam::channel::Sender<(PlayerId, ServerMessage)>,
-    has_placed_castle: bool,
-    alive: bool,
-    money: u32, // if I make it a u16 richard will crash the server by somehow farming up >66k money
-    connected: bool,
-}
+pub mod client_components;
+use client_components::*;
 
-impl Client {
-    fn send(&self, msg: ServerMessage) {
-        if let Err(_) = self.channel.try_send((self.id, msg)) {
-            println!("failed to send message on channel");
-        }
-    }
-
-    fn collect(&mut self, amount: u32) {
-        self.money += amount;
-        self.send(ServerMessage::Money {
-            id: self.id,
-            amount: self.money,
-        });
-    }
-
-    fn charge(&mut self, amount: u32) -> bool {
-        // returns if we actually successfully made the charge or not
-        if self.money >= amount {
-            self.money -= amount;
-            self.send(ServerMessage::Money {
-                id: self.id,
-                amount: self.money,
-            });
-            return true;
-        }
-        return false;
-    }
-}
+pub mod client_events;
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PhysicsSchedule;
@@ -169,17 +135,10 @@ fn main() {
                             VERSION,
                         ) {
                             clprops.has_tested = true;
-                            let client = Client {
-                                has_placed_castle: false,
-                                money: 0,
-                                nickname: "None".to_string(),
-                                slot: 0,
-                                alive: false,
-                                id: id.into(),
-                                connected: false,
-                                channel: from_bevy_specific_tx.clone(),
-                            };
-                            if let Err(_) = to_bevy_tx.send(Comms::ClientConnect(client)) {
+                            if let Err(_) = to_bevy_tx.send(Comms::ClientConnect(
+                                id.into(),
+                                from_bevy_specific_tx.clone(),
+                            )) {
                                 println!("channel failure: this is probably fatal");
                             }
                         } else {
@@ -281,6 +240,15 @@ fn main() {
         .add_event::<ExplosionEvent>()
         .add_event::<PieceDestroyedEvent>()
         .add_event::<LaserCastEvent>()
+        .add_event::<ClientPlaceEvent>()
+        .add_event::<ClientCollectEvent>()
+        .add_event::<ClientConnectEvent>()
+        .add_event::<ClientTriedPasswordEvent>()
+        .add_event::<ClientTriedTeamConnectEvent>()
+        .add_event::<ClientRequestedSpectateEvent>()
+        .add_event::<ClientSuccessfullyJoinedEvent>()
+        .add_event::<ClientSpecialObjectEvent>()
+        .add_event::<StrategyPathModifiedEvent>()
         .insert_resource(ClientMap(HashMap::new())) // -225, -39.5, -516.9
         .add_plugins(bevy_time::TimePlugin)
         .insert_resource(Receiver(to_bevy_rx))
@@ -298,6 +266,19 @@ fn main() {
         })
         .insert_resource(conf)
         .add_systems(PreUpdate, (run_play_schedule,))
+        .add_systems(
+            Update,
+            (
+                client_connection,
+                client_disconnection,
+                client_flow_password.before(setup_client),
+                client_place,
+                setup_client,
+                special_handler,
+                strategy_path_handler,
+            )
+                .before(client_tick),
+        )
         .add_systems(
             Update,
             (

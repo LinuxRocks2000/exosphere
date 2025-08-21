@@ -10,307 +10,82 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
-// handle messages incoming from the client
-
 use crate::components::*;
 use crate::events::*;
 use crate::resources::*;
 use crate::Comms;
-use crate::Placer;
 use bevy::prelude::*;
 use common::comms::*;
-use common::types::*;
-use common::PlayerId;
-
-fn setup_client(
-    // TODO: do fewer hash table lookups
-    id: PlayerId,
-    ev_newclient: &mut EventWriter<NewClientEvent>,
-    state: &mut GameState,
-    config: &Config,
-    clients: &mut ClientMap,
-    broadcast: &mut Sender,
-) {
-    let slot: u8 = if state.currently_attached_players < config.counts.max_players {
-        1
-    } else {
-        0
-    }; // todo: implement teams
-    for k in clients.keys() {
-        if *k != id {
-            let message = ServerMessage::PlayerData {
-                id: *k,
-                nickname: clients[k].nickname.clone(),
-                slot: clients[k].slot,
-            };
-            clients[&id].send(message);
-        }
-    }
-    clients.get_mut(&id).unwrap().send(ServerMessage::Metadata {
-        id,
-        board_width: config.board.width,
-        board_height: config.board.height,
-        slot,
-    });
-    if let Err(_) = broadcast.send(ServerMessage::PlayerData {
-        id,
-        nickname: clients[&id].nickname.clone(),
-        slot,
-    }) {
-        println!("couldn't broadcast player data");
-    }
-    state.currently_attached_players += 1;
-    clients.get_mut(&id).unwrap().slot = slot;
-    clients.get_mut(&id).unwrap().connected = true;
-    ev_newclient.write(NewClientEvent { id });
-}
 
 pub fn client_tick(
     mut commands: Commands,
-    mut pieces: Query<(
-        Entity,
-        &GamePiece,
-        Option<&mut Spaceshipoid>,
-        Option<&Transform>,
-        Option<&Territory>,
-    )>,
-    mut guns: Query<&mut Gun>,
-    mut ev_newclient: EventWriter<NewClientEvent>,
-    place: EventWriter<PlaceEvent>,
-    mut state: ResMut<GameState>,
-    config: Res<Config>,
     mut clients: ResMut<ClientMap>,
     receiver: ResMut<Receiver>,
-    mut broadcast: ResMut<Sender>,
-    mut client_killed: EventWriter<ClientKilledEvent>,
+    mut client_killed_event: EventWriter<ClientKilledEvent>,
+    mut client_placed_event: EventWriter<ClientPlaceEvent>,
+    mut client_connected_event: EventWriter<ClientConnectEvent>,
+    mut client_password_event: EventWriter<ClientTriedPasswordEvent>,
+    mut strategy_path_modified_event: EventWriter<StrategyPathModifiedEvent>,
+    mut client_special_event: EventWriter<ClientSpecialObjectEvent>,
 ) {
-    let mut place = Placer(place);
-    // manage events from network-connected clients
+    // manage events from network-connected clients. this is just a dispatch controller; it aims to be light so the next steps can be massively
+    // parallellized.
     loop {
         // loops receiver.try_recv(), until it returns empty
         match receiver.try_recv() {
-            Ok(message) => {
-                match message {
-                    Comms::ClientConnect(cli) => {
-                        clients.insert(cli.id, cli);
-                    }
-                    Comms::ClientDisconnect(id) => {
-                        println!("client disconnected. cleaning up!");
-                        for (entity, piece, _, _, _) in pieces.iter() {
-                            if piece.owner == id {
-                                commands.entity(entity).despawn();
-                                if let Err(_) = broadcast
-                                    .send(ServerMessage::DeleteObject { id: entity.into() })
-                                {
-                                    println!("game engine lost connection to webserver. this is probably not critical.");
-                                }
+            Ok(message) => match message {
+                Comms::ClientConnect(id, channel) => {
+                    let thing = commands.spawn((ClientChannel { id, channel }, Client { id }));
+                    clients.insert(id, thing.id());
+                }
+                Comms::ClientDisconnect(id) => {
+                    clients.remove(&id);
+                    client_killed_event.write(ClientKilledEvent { client: id });
+                }
+                Comms::MessageFrom(id, msg) => {
+                    let mut kill = false;
+                    if let Some(client) = clients.get(&id) {
+                        let client = *client;
+                        match msg {
+                            ClientMessage::Connect { nickname } => {
+                                client_connected_event.write(ClientConnectEvent(client, nickname));
+                            }
+                            ClientMessage::TryPassword { password } => {
+                                client_password_event
+                                    .write(ClientTriedPasswordEvent(clients[&id], password));
+                            }
+                            ClientMessage::PlacePiece { x, y, tp } => {
+                                client_placed_event.write(ClientPlaceEvent { x, y, tp, client });
+                            }
+                            ClientMessage::Strategy { evt } => {
+                                strategy_path_modified_event
+                                    .write(StrategyPathModifiedEvent(clients[&id], evt));
+                            }
+                            ClientMessage::Special { id: piece_id, evt } => {
+                                client_special_event.write(ClientSpecialObjectEvent(
+                                    clients[&id],
+                                    piece_id,
+                                    evt,
+                                ));
+                            }
+                            _ => {
+                                println!(
+                                    "error: client sent unimplemented frame! dropping client."
+                                );
+                                kill = true;
                             }
                         }
-                        if clients[&id].connected {
-                            state.currently_attached_players -= 1;
-                        }
-                        if clients[&id].alive {
-                            state.currently_playing -= 1;
-                        }
+                    } else {
+                        println!(
+                            "error: received message from client {:?}, which does not exist",
+                            id
+                        );
+                    }
+                    if kill {
                         clients.remove(&id);
-                        client_killed.write(ClientKilledEvent { client: id });
-                    }
-                    Comms::MessageFrom(id, msg) => {
-                        let mut kill = false;
-                        if clients.contains_key(&id) {
-                            match msg {
-                                ClientMessage::Connect { nickname } => {
-                                    clients.get_mut(&id).unwrap().nickname = nickname;
-                                    if let None = config.password {
-                                        setup_client(
-                                            id,
-                                            &mut ev_newclient,
-                                            &mut state,
-                                            &config,
-                                            &mut clients,
-                                            &mut broadcast,
-                                        );
-                                    } else {
-                                        clients
-                                            .get_mut(&id)
-                                            .unwrap()
-                                            .send(ServerMessage::PasswordChallenge);
-                                    }
-                                }
-                                ClientMessage::TryPassword { password } => {
-                                    if let Some(p) = &config.password {
-                                        if p == &password {
-                                            setup_client(
-                                                id,
-                                                &mut ev_newclient,
-                                                &mut state,
-                                                &config,
-                                                &mut clients,
-                                                &mut broadcast,
-                                            );
-                                        } else {
-                                            clients
-                                                .get_mut(&id)
-                                                .unwrap()
-                                                .send(ServerMessage::Reject);
-                                        }
-                                    }
-                                }
-                                ClientMessage::PlacePiece { x, y, tp } => {
-                                    if tp == PieceType::Castle {
-                                        if !state.playing || state.io {
-                                            if clients[&id].has_placed_castle {
-                                                println!("client attempted to place an extra castle. dropping.");
-                                                kill = true;
-                                            } else {
-                                                let mut is_okay = true;
-                                                for (_, _, _, transform, territory) in pieces.iter()
-                                                {
-                                                    if let Some(transform) = transform {
-                                                        if let Some(territory) = territory {
-                                                            let dx = transform.translation.x - x;
-                                                            let dy = transform.translation.y - y;
-                                                            let d = (dx * dx + dy * dy).sqrt();
-                                                            if d < territory.radius + 600.0 {
-                                                                // if the territories would intersect
-                                                                is_okay = false;
-                                                                break;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                if is_okay {
-                                                    state.currently_playing += 1;
-                                                    clients
-                                                        .get_mut(&id)
-                                                        .unwrap()
-                                                        .has_placed_castle = true;
-                                                    clients.get_mut(&id).unwrap().alive = true;
-                                                    clients
-                                                        .get_mut(&id)
-                                                        .unwrap()
-                                                        .collect(config.client_setup.money);
-                                                    let slot = clients[&id].slot;
-                                                    for thing in config.client_setup.area.iter() {
-                                                        thing
-                                                            .place(&mut place, x, y, 0.0, id, slot);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } else if state.playing && state.strategy {
-                                        let slot = clients[&id].slot;
-                                        if tp.user_placeable() {
-                                            if clients.get_mut(&id).unwrap().charge(tp.price()) {
-                                                place.p_simple(x, y, id, slot, tp);
-                                            }
-                                        }
-                                    }
-                                }
-                                ClientMessage::StrategyInsert { piece, index, node } => {
-                                    if state.playing && state.strategy {
-                                        if let Ok((_, piece, shipoid, _, _)) =
-                                            pieces.get_mut(piece.into())
-                                        {
-                                            if let Some(mut shipoid) = shipoid {
-                                                if piece.owner == id {
-                                                    shipoid.pathfollower.insert_node(index, node);
-                                                } else {
-                                                    println!("client attempted to move thing it doesn't own [how rude]");
-                                                }
-                                            } else {
-                                                println!("attempt to move immovable object");
-                                            }
-                                        }
-                                    }
-                                }
-                                ClientMessage::StrategyClear { piece: piece_id } => {
-                                    if state.playing && state.strategy {
-                                        if let Ok((_, piece, shipoid, _, _)) =
-                                            pieces.get_mut(piece_id.into())
-                                        {
-                                            if let Some(mut shipoid) = shipoid {
-                                                if piece.owner == id {
-                                                    shipoid.pathfollower.clear();
-                                                }
-                                            } else {
-                                                println!("whoops");
-                                            }
-                                        }
-                                    }
-                                }
-                                ClientMessage::StrategySet {
-                                    piece: piece_id,
-                                    index,
-                                    node,
-                                } => {
-                                    if state.playing && state.strategy {
-                                        if let Ok((_, piece, shipoid, _, _)) =
-                                            pieces.get_mut(piece_id.into())
-                                        {
-                                            if let Some(mut shipoid) = shipoid {
-                                                if piece.owner == id {
-                                                    shipoid.pathfollower.update_node(index, node);
-                                                }
-                                            } else {
-                                                println!("whoops");
-                                            }
-                                        }
-                                    }
-                                }
-                                ClientMessage::StrategyDelete {
-                                    piece: piece_id,
-                                    index,
-                                } => {
-                                    if state.playing && state.strategy {
-                                        if let Ok((_, piece, shipoid, _, _)) =
-                                            pieces.get_mut(piece_id.into())
-                                        {
-                                            if let Some(mut shipoid) = shipoid {
-                                                if piece.owner == id {
-                                                    shipoid.pathfollower.remove_node(index);
-                                                }
-                                            } else {
-                                                println!("whoops");
-                                            }
-                                        }
-                                    }
-                                }
-                                ClientMessage::GunState {
-                                    piece: piece_id,
-                                    enabled,
-                                } => {
-                                    if state.playing && state.strategy {
-                                        if let Ok((_, piece, _, _, _)) =
-                                            pieces.get_mut(piece_id.into())
-                                        {
-                                            if piece.owner == id {
-                                                if let Ok(mut gun) = guns.get_mut(piece_id.into()) {
-                                                    gun.enabled = enabled;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => {
-                                    println!(
-                                        "error: client sent unimplemented frame! dropping client."
-                                    );
-                                    kill = true;
-                                }
-                            }
-                        } else {
-                            println!(
-                                "error: received message from client {:?}, which does not exist",
-                                id
-                            );
-                        }
-                        if kill {
-                            clients.remove(&id);
-                        }
                     }
                 }
-            }
+            },
             Err(crossbeam::channel::TryRecvError::Empty) => {
                 break;
             }

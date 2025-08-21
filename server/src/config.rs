@@ -72,6 +72,13 @@ pub struct ClientSetupConfig {
     pub area: Vec<InitItemDescriptor>,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct TeamDescriptor {
+    pub slot: u8,
+    pub name: String,
+    pub password: String,
+}
+
 #[derive(Deserialize, Serialize, Resource)]
 pub struct Config {
     pub game_address: String,
@@ -81,6 +88,7 @@ pub struct Config {
     pub board: BoardConfig,
     pub client_setup: ClientSetupConfig,
     pub game_type: String, // "io" or "normal"
+    pub teams: Option<Vec<TeamDescriptor>>,
 }
 
 pub fn read_config() -> Option<Config> {
@@ -127,6 +135,7 @@ impl Default for Config {
                 height: 3000.0,
                 things: vec![],
             },
+            teams: None,
             client_setup: ClientSetupConfig {
                 money: 100,
                 area: vec![

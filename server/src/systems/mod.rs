@@ -79,3 +79,24 @@ pub use handle_presolve::*;
 
 pub mod piece_harm;
 pub use piece_harm::*;
+
+pub mod setup_client;
+pub use setup_client::*;
+
+pub mod client_place;
+pub use client_place::*;
+
+pub mod client_connection;
+pub use client_connection::*;
+
+pub mod client_disconnection;
+pub use client_disconnection::*;
+
+pub mod client_flow_password;
+pub use client_flow_password::*;
+
+pub mod strategy_path_handler;
+pub use strategy_path_handler::*;
+
+pub mod special_handler;
+pub use special_handler::*;

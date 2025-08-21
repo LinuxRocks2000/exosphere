@@ -23,11 +23,14 @@ pub fn client_health_check(
     mut commands: Commands,
     mut events: EventReader<ClientKilledEvent>,
     mut piece_kill: EventWriter<PieceDestroyedEvent>,
-    mut clients: ResMut<ClientMap>,
+    clients: Res<ClientMap>,
     pieces: Query<(Option<&Territory>, &GamePiece, Entity)>,
     mut state: ResMut<GameState>,
     config: Res<Config>,
+    channels: Query<&ClientChannel>,
+    alive: Query<&ClientPlaying>,
 ) {
+    // TODO: split into more than one system? simplify? restructure?
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
     // * if the client has any remaining Territory, it's not dead, false alarm
@@ -35,7 +38,8 @@ pub fn client_health_check(
     // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
     let mut did_something = false;
     for ev in events.read() {
-        if clients.contains_key(&ev.client) {
+        if let Some(client) = clients.get(&ev.client) {
+            let client = *client;
             // if the client's already disconnected, we can't exactly tell them they lost
             let mut has_territory = false;
             for (territory, piece, _) in pieces.iter() {
@@ -45,8 +49,8 @@ pub fn client_health_check(
             }
             if !has_territory {
                 state.currently_playing -= 1;
-                clients[&ev.client].send(ServerMessage::YouLose);
-                clients.get_mut(&ev.client).unwrap().alive = false;
+                channels.get(client).unwrap().send(ServerMessage::YouLose);
+                commands.entity(client).try_remove::<ClientPlaying>();
             }
         }
         for (_, piece, entity) in pieces.iter() {
@@ -65,14 +69,14 @@ pub fn client_health_check(
             if state.currently_playing == 1 {
                 let mut winid = PlayerId::SYSTEM;
                 for (id, client) in clients.iter() {
-                    if client.alive {
+                    if alive.contains(*client) {
                         winid = *id;
                         break;
                     }
                 }
-                for (_, client) in clients.iter() {
-                    client.send(ServerMessage::Winner { id: winid });
-                    client.send(ServerMessage::Disconnect);
+                for c in channels.iter() {
+                    c.send(ServerMessage::Winner { id: winid });
+                    c.send(ServerMessage::Disconnect);
                 }
             }
             state.playing = false;

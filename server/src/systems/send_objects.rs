@@ -28,11 +28,14 @@ pub fn send_objects(
         Option<&Territory>,
         Option<&Fabber>,
     )>,
+    channel: Query<&ClientChannel>,
 ) {
     for ev in events.read() {
         if let Some(client) = clients.get_mut(&ev.id) {
             for (entity, piece, transform, territory, fabber) in objects.iter() {
-                client.send(ServerMessage::ObjectCreate {
+                let chan = channel.get(*client).unwrap();
+
+                chan.send(ServerMessage::ObjectCreate {
                     x: transform.translation.x,
                     y: transform.translation.y,
                     a: transform.rotation.to_euler(EulerRot::ZYX).0,
@@ -41,13 +44,13 @@ pub fn send_objects(
                     tp: piece.tp,
                 });
                 if let Some(territory) = territory {
-                    client.send(ServerMessage::Territory {
+                    chan.send(ServerMessage::Territory {
                         id: entity.into(),
                         radius: territory.radius,
                     });
                 }
                 if let Some(fabber) = fabber {
-                    client.send(ServerMessage::Fabber {
+                    chan.send(ServerMessage::Fabber {
                         id: entity.into(),
                         radius: fabber.radius,
                     });

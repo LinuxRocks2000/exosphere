@@ -12,6 +12,8 @@
 
 // ALL of the component declarations and their respective impls
 
+pub use crate::client_components::*;
+
 use crate::solve_spaceship::*;
 use crate::systems::shoot::Bullets;
 use bevy::prelude::Component;

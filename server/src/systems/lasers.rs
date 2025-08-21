@@ -43,7 +43,15 @@ pub fn lasers(
         };
         let hit =
             if let Some(hit) = space_query.cast_ray(cast.from, dir, cast.max_dist, true, &filter) {
-                hit
+                if let Some(excl) = cast.exclusive {
+                    if hit.entity == excl {
+                        hit
+                    } else {
+                        continue;
+                    }
+                } else {
+                    hit
+                }
             } else {
                 let to = cast.from + cast.dir * cast.max_dist;
                 let _ = broadcast.send(ServerMessage::LaserCast {

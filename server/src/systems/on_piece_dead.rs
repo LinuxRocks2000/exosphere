@@ -30,7 +30,8 @@ pub fn on_piece_dead(
     mut events: EventReader<PieceDestroyedEvent>,
     mut explosions: EventWriter<ExplosionEvent>,
     mut client_kill: EventWriter<ClientKilledEvent>,
-    mut clients: ResMut<ClientMap>,
+    clients: Res<ClientMap>,
+    mut client_collect: EventWriter<ClientCollectEvent>,
 ) {
     for evt in events.read() {
         if let Ok(piece) = pieces.get(evt.piece) {
@@ -44,9 +45,12 @@ pub fn on_piece_dead(
                 }
             }
             if let Ok(_) = chests.get(evt.piece) {
-                if let Some(cl) = clients.get_mut(&evt.responsible) {
-                    cl.collect(20); // kill the chest, collect some dough, that's life, yo!
-                }
+                if let Some(cl) = clients.get(&evt.responsible) {
+                    client_collect.write(ClientCollectEvent {
+                        client: *cl,
+                        amount: 20,
+                    }); // kill the chest, collect some dough, that's life, yo!
+                } // [2025-8-20] sometimes I go back and read old comments and then I feel sad
             }
             if piece.tp == PieceType::Castle {
                 client_kill.write(ClientKilledEvent {

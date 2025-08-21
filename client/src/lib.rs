@@ -153,36 +153,29 @@ impl ObjectData {
     fn extend_path(&mut self, node: PathNode) {
         let endex = self.path.endex().unwrap();
         self.path.insert_node(endex, node);
-        send(ClientMessage::StrategyInsert {
-            piece: self.id,
-            index: endex,
-            node,
+        send(ClientMessage::Strategy {
+            evt: StrategyPathModification::Insert(self.id, endex, node),
         });
     }
 
     fn path_insert(&mut self, before: u16, node: PathNode) {
         self.path.insert_node(before, node);
-        send(ClientMessage::StrategyInsert {
-            piece: self.id,
-            index: before,
-            node,
+        send(ClientMessage::Strategy {
+            evt: StrategyPathModification::Insert(self.id, before, node),
         });
     }
 
     fn update_strategy(&mut self, index: u16, node: PathNode) {
         self.path.update_node(index, node);
-        send(ClientMessage::StrategySet {
-            piece: self.id,
-            index,
-            node,
+        send(ClientMessage::Strategy {
+            evt: StrategyPathModification::Set(self.id, index, node),
         });
     }
 
     fn delete_strategy(&mut self, index: u16) {
         self.path.remove_node(index);
-        send(ClientMessage::StrategyDelete {
-            piece: self.id,
-            index,
+        send(ClientMessage::Strategy {
+            evt: StrategyPathModification::Delete(self.id, index),
         });
     }
 }
@@ -487,10 +480,8 @@ impl State {
                             if let Some(PathNode::Rotation(r, dur)) = obj.path.get_last() {
                                 let ind = obj.path.len().unwrap() - 1;
                                 steal_mut(&obj.path).update_node(ind, node);
-                                send(ClientMessage::StrategySet {
-                                    piece: obj.id,
-                                    index: ind,
-                                    node,
+                                send(ClientMessage::Strategy {
+                                    evt: StrategyPathModification::Set(obj.id, ind, node),
                                 });
                             } else {
                                 steal_mut(obj).extend_path(node);
@@ -773,15 +764,15 @@ impl State {
             if key == "g" {
                 if let Some(mut state) = self.gun_states.get_mut(&piece) {
                     *state = !(*state);
-                    send(ClientMessage::GunState {
-                        piece,
-                        enabled: *state,
+                    send(ClientMessage::Special {
+                        id: piece,
+                        evt: ObjectSpecialPropertySet::GunState(*state),
                     });
                 } else {
                     self.gun_states.insert(piece, true);
-                    send(ClientMessage::GunState {
-                        piece,
-                        enabled: true,
+                    send(ClientMessage::Special {
+                        id: piece,
+                        evt: ObjectSpecialPropertySet::GunState(true),
                     });
                 }
             }
@@ -893,12 +884,14 @@ impl State {
                     }
                 }
                 ServerMessage::StrategyCompletion { id, remaining } => {
-                    if let Some(mut obj) = self.object_data.get_mut(&id) {
+                    if let Some(obj) = self.object_data.get_mut(&id) {
                         obj.path.bump().unwrap();
                         if obj.path.len().unwrap() != remaining {
                             alert(&format!("error! mismatched strategy paths {} (local) vs {} (server)! attempting recovery", obj.path.len().unwrap(), remaining));
                             obj.path.clear();
-                            send(ClientMessage::StrategyClear { piece: id });
+                            send(ClientMessage::Strategy {
+                                evt: StrategyPathModification::Clear(id),
+                            });
                         }
                     }
                 }
