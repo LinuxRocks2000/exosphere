@@ -19,7 +19,6 @@ use common::comms::ServerMessage;
 pub fn setup_client(
     mut events: EventReader<ClientSuccessfullyJoinedEvent>,
     mut ev_newclient: EventWriter<NewClientEvent>,
-    mut state: ResMut<GameState>,
     config: Res<Config>,
     clients: Res<ClientMap>,
     broadcast: ResMut<Sender>,
@@ -59,7 +58,6 @@ pub fn setup_client(
         }) {
             println!("couldn't broadcast player data");
         }
-        state.currently_attached_players += 1;
         commands.entity(client).insert(ClientConnected);
         ev_newclient.write(NewClientEvent { id });
     }

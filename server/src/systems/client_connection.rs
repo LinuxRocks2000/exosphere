@@ -31,6 +31,12 @@ pub fn client_connection(
             nickname: nickname.clone(),
         });
         if let Some(teams) = &config.teams {
+            channels
+                .get(*client)
+                .unwrap()
+                .send(ServerMessage::TeamChallenge {
+                    available: teams.iter().map(|t| (t.name.clone(), t.slot)).collect(),
+                });
         } else if let Some(_) = config.password {
             channels
                 .get(*client)

@@ -206,3 +206,14 @@ export function screen(panel) {
   }
   document.getElementById(panel).style.display = "";
 }
+
+export function set_teams_select(teams) {
+  let teams_select = document.getElementById("team-chooser");
+  teams_select.innerHTML = "";
+  for (let team of teams) {
+    let option = document.createElement("option");
+    option.innerText = team.get_name();
+    option.value = team.get_id();
+    teams_select.appendChild(option);
+  }
+}

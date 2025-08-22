@@ -93,28 +93,37 @@ impl Stage {
     }
 }
 
+/// ServerMessage represents a data frame sent from the Bevy gameserver to the websocket client.
 #[derive(Debug, Encode, Decode, Clone)]
 pub enum ServerMessage {
-    // server -> client
-    Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8), // the test message. see above blurb.
+    /// The standard test frame. This is sent to the client on startup, and an exactly equal one is sent back;
+    /// if ever they don't match, the connection will not proceed.
+    Test(String, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, u8),
     GameState {
         stage: Stage,
         stage_duration: u16,
         tick_in_stage: u16,
     },
+    /// The startup message. Receiving Metadata instructs the client that
+    /// it has been accepted and should show the user the gameboard.
     Metadata {
         id: PlayerId,
         slot: u8,
         board_width: f32,
         board_height: f32,
-    }, // send whatever data (id, board width x height, slot) the client needs to begin rendering the gameboard
-    // this also tells the client that it was accepted (e.g. got the right password); getting the password _wrong_ would abort the connection
-    // slot tells the client what position it's occupying. 0 = spectating, 1 = free agent, 2-255 = teams.
-    PasswordChallenge, // the client must send a password, unless it wants to spectate (some games don't allow spectating!)
+    },
+    /// A password is required on this server. The client should send a password attempt
+    /// or request to spectate.
+    PasswordChallenge,
+    /// A team is required on this server. The client should send a team ID and password
+    /// or request to spectate.
     TeamChallenge {
         available: Vec<(String, u8)>, // (team name, slot number)
     },
-    Reject, // challenge failed
+    /// The client failed either the PasswordChallenge or TeamChallenge, and should
+    /// either request to spectate or disconnect.
+    Reject,
+    /// A piece was added to the gameboard.
     ObjectCreate {
         id: PieceId,
         x: f32,
@@ -123,54 +132,43 @@ pub enum ServerMessage {
         owner: PlayerId,
         tp: PieceType,
     },
-    ObjectMove {
-        id: PieceId,
-        x: f32,
-        y: f32,
-        a: f32,
-    },
-    DeleteObject {
-        id: PieceId,
-    },
-    StrategyCompletion {
-        id: PieceId,
-        remaining: u16,
-    }, // a node in a strategy has been fulfilled, and this is the number of strategy nodes remaining!
-    // this serves as a sort of checksum; if the number of strategy nodes remaining here is different from the number of strategy nodes remaining in the client
-    // the client knows there's something wrong and can send StrategyClear to attempt to recover.
+    /// A piece on the gameboard was moved.
+    ObjectMove { id: PieceId, x: f32, y: f32, a: f32 },
+    /// A piece on the gameboard was deleted.
+    DeleteObject { id: PieceId },
+    /// A node in a strategy path has been fulfilled: this tells the client
+    /// how many nodes are left, as a sort of checksum.
+    StrategyCompletion { id: PieceId, remaining: u16 },
+    /// Information about a player.
     PlayerData {
         id: PlayerId,
         nickname: String,
         slot: u8,
     },
-    YouLose, // you LOST!
-    Winner {
-        id: PlayerId,
-    }, // id of the winner. if 0, it was a tie.
-    Territory {
-        id: PieceId,
-        radius: f32,
-    }, // set the territory radius for a piece
-    Fabber {
-        id: PieceId,
-        radius: f32,
-    }, // set the fabber radius for a piece
+    /// You LOST!
+    YouLose,
+    /// Somebody won! Sends id 0 (SYSTEM) for a tie.
+    Winner { id: PlayerId },
+    /// Establish a territory influence around an object.
+    Territory { id: PieceId, radius: f32 },
+    /// Establish a fabber influence around an object.
+    Fabber { id: PieceId, radius: f32 },
+    /// The client will be disconnected.
     Disconnect,
-    Money {
-        id: PlayerId,
-        amount: u32,
-    }, // set the money amount for a client
-    // in the future we may want to be able to see the money of our allies, so the id tag could be useful
+    /// The client has this amount of cash on hand!
+    Money { id: PlayerId, amount: u32 },
+    /// Something blew up. The explosion should be cleared
+    /// after no more than one frame.
     Explosion {
         x: f32,
         y: f32,
         radius: f32,
         damage: f32,
-    }, // an explosion happened! the client should render it for one frame and then kill it
-    Health {
-        id: PieceId,
-        health: f32,
-    }, // tell a player about the current health of one of its pieces
+    },
+    /// Inform the client about the health of one of its pieces.
+    Health { id: PieceId, health: f32 },
+    /// A laser was cast. Like explosions, these should only be rendered
+    /// for one frame.
     LaserCast {
         caster: PieceId,
         from_x: f32,

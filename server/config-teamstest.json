@@ -19,7 +19,7 @@
     "play_period": 300
   },
   "counts": {
-    "min_players": 1,
+    "min_players": 2,
     "max_players": 1000
   },
   "board": {

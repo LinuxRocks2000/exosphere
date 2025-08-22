@@ -249,6 +249,7 @@ fn main() {
         .add_event::<ClientSuccessfullyJoinedEvent>()
         .add_event::<ClientSpecialObjectEvent>()
         .add_event::<StrategyPathModifiedEvent>()
+        .add_event::<ClientLostEvent>()
         .insert_resource(ClientMap(HashMap::new())) // -225, -39.5, -516.9
         .add_plugins(bevy_time::TimePlugin)
         .insert_resource(Receiver(to_bevy_rx))
@@ -261,8 +262,6 @@ fn main() {
             strategy: false,
             tick: 0,
             time_in_stage: 0,
-            currently_attached_players: 0,
-            currently_playing: 0,
         })
         .insert_resource(conf)
         .add_systems(PreUpdate, (run_play_schedule,))
@@ -272,10 +271,12 @@ fn main() {
                 client_connection,
                 client_disconnection,
                 client_flow_password.before(setup_client),
+                client_flow_team.before(setup_client),
                 client_place,
                 setup_client,
                 special_handler,
                 strategy_path_handler,
+                client_win_checks,
             )
                 .before(client_tick),
         )

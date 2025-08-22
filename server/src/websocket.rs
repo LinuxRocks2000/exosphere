@@ -556,10 +556,15 @@ impl Server {
         client: ClientId,
         message: MessageType,
     ) {
-        let client = self.clients.get_mut(&client).unwrap();
-        let enc = &bitcode::encode(&message);
-        client.send_raw(&Self::make_header(enc.len()));
-        client.send_raw(enc);
+        if let Some(client) = self.clients.get_mut(&client) {
+            let enc = &bitcode::encode(&message);
+            client.send_raw(&Self::make_header(enc.len()));
+            client.send_raw(enc);
+        } else {
+            println!(
+                "WARNING: attempted to send a message to a disconnected client! this is not fatal."
+            );
+        }
     }
 
     pub fn broadcast<MessageType: bitcode::Encode>(&mut self, message: MessageType) {

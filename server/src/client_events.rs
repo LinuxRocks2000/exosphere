@@ -47,3 +47,6 @@ pub struct ClientSpecialObjectEvent(pub Entity, pub PieceId, pub ObjectSpecialPr
 
 #[derive(Event)]
 pub struct StrategyPathModifiedEvent(pub Entity, pub StrategyPathModification);
+
+#[derive(Event)]
+pub struct ClientLostEvent;

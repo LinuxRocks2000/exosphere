@@ -12,6 +12,7 @@
 
 // sends the current frame number and stage (and other such information) to clients every tick
 
+use crate::components::*;
 use crate::resources::*;
 use bevy::prelude::*;
 use common::comms::ServerMessage;
@@ -19,8 +20,10 @@ use common::comms::ServerMessage;
 pub fn frame_broadcast(
     broadcast: ResMut<Sender>,
     mut state: ResMut<GameState>,
+    current_players: Query<&ClientPlaying>,
     config: Res<Config>,
 ) {
+    let currently_playing = current_players.iter().len();
     if state.playing {
         state.tick += 1;
         if state.tick > state.time_in_stage {
@@ -33,7 +36,7 @@ pub fn frame_broadcast(
             state.tick = 0;
         }
     } else {
-        if state.currently_playing >= config.counts.min_players {
+        if currently_playing >= config.counts.min_players as usize {
             state.tick += 1;
         } else {
             state.tick = 0;

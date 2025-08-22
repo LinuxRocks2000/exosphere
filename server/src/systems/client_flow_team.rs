@@ -16,27 +16,27 @@ use crate::resources::*;
 use bevy::prelude::*;
 use common::comms::ServerMessage;
 
-pub fn client_disconnection(
-    mut events: EventReader<ClientKilledEvent>,
+pub fn client_flow_team(
+    mut team_events: EventReader<ClientTriedTeamConnectEvent>,
+    mut client_joined_event: EventWriter<ClientSuccessfullyJoinedEvent>,
+    config: Res<Config>,
+    channel: Query<&ClientChannel>,
     mut commands: Commands,
-    pieces: Query<(Entity, &mut GamePiece)>,
-    broadcast: Res<Sender>,
-    mut clients: ResMut<ClientMap>,
 ) {
-    for event in events.read() {
-        for (entity, piece) in pieces.iter() {
-            if piece.owner == event.client {
-                commands.entity(entity).despawn();
-                if let Err(_) = broadcast.send(ServerMessage::DeleteObject { id: entity.into() }) {
-                    println!(
-                        "game engine lost connection to webserver. this is probably not critical."
-                    );
+    if let Some(teams) = &config.teams {
+        'event: for ClientTriedTeamConnectEvent(client, team, password) in team_events.read() {
+            for t in teams {
+                if t.slot == *team && t.password == *password {
+                    commands
+                        .entity(*client)
+                        .insert(ClientAffiliation { slot: *team });
+                    client_joined_event.write(ClientSuccessfullyJoinedEvent(*client));
+                    continue 'event;
                 }
             }
+            if let Ok(c) = channel.get(*client) {
+                c.send(ServerMessage::Reject)
+            }
         }
-        if let Some(cl) = clients.get(&event.client) {
-            commands.entity(*cl).despawn();
-        }
-        clients.remove(&event.client);
     }
 }

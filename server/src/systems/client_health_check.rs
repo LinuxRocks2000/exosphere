@@ -17,7 +17,6 @@ use crate::events::*;
 use crate::resources::*;
 use bevy::prelude::*;
 use common::comms::ServerMessage;
-use common::PlayerId;
 
 pub fn client_health_check(
     mut commands: Commands,
@@ -25,10 +24,8 @@ pub fn client_health_check(
     mut piece_kill: EventWriter<PieceDestroyedEvent>,
     clients: Res<ClientMap>,
     pieces: Query<(Option<&Territory>, &GamePiece, Entity)>,
-    mut state: ResMut<GameState>,
-    config: Res<Config>,
     channels: Query<&ClientChannel>,
-    alive: Query<&ClientPlaying>,
+    mut lose_event: EventWriter<ClientLostEvent>,
 ) {
     // TODO: split into more than one system? simplify? restructure?
     // checks:
@@ -36,7 +33,6 @@ pub fn client_health_check(
     // * if the client has any remaining Territory, it's not dead, false alarm
     // if we determined that the client is in fact dead, send a Lose message and update the state accordingly.
     // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
-    let mut did_something = false;
     for ev in events.read() {
         if let Some(client) = clients.get(&ev.client) {
             let client = *client;
@@ -48,7 +44,7 @@ pub fn client_health_check(
                 }
             }
             if !has_territory {
-                state.currently_playing -= 1;
+                lose_event.write(ClientLostEvent);
                 channels.get(client).unwrap().send(ServerMessage::YouLose);
                 commands.entity(client).try_remove::<ClientPlaying>();
             }
@@ -60,35 +56,6 @@ pub fn client_health_check(
                     responsible: ev.client,
                 });
             }
-        }
-        did_something = true;
-    }
-    if !state.io && did_something {
-        // only if we made a change does it make sense to update the state here
-        if state.playing && state.currently_playing < 2 {
-            if state.currently_playing == 1 {
-                let mut winid = PlayerId::SYSTEM;
-                for (id, client) in clients.iter() {
-                    if alive.contains(*client) {
-                        winid = *id;
-                        break;
-                    }
-                }
-                for c in channels.iter() {
-                    c.send(ServerMessage::Winner { id: winid });
-                    c.send(ServerMessage::Disconnect);
-                }
-            }
-            state.playing = false;
-            state.strategy = false;
-            state.tick = 0;
-            state.time_in_stage = config.times.wait_period;
-        }
-        if state.currently_playing < config.counts.min_players {
-            state.playing = false;
-            state.tick = 0;
-            state.time_in_stage = config.times.wait_period;
-            state.strategy = false;
         }
     }
 }

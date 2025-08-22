@@ -66,6 +66,23 @@ pub enum MouseAcrossEvent {
     Down,
 }
 
+#[wasm_bindgen]
+struct TeamDescriptor {
+    name: String,
+    id: u8,
+}
+
+#[wasm_bindgen]
+impl TeamDescriptor {
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_id(&self) -> u8 {
+        self.id
+    }
+}
+
 #[wasm_bindgen(module = "/core.js")]
 extern "C" {
     fn alert(s: &str);
@@ -95,6 +112,7 @@ extern "C" {
     fn reload();
     fn draw_text_box(x: f32, y: f32, lines: Vec<String>);
     fn screen(scr: &str);
+    fn set_teams_select(teams: Vec<TeamDescriptor>);
 }
 
 fn send(message: ClientMessage) {
@@ -808,6 +826,15 @@ impl State {
                 ServerMessage::PasswordChallenge => {
                     screen("password-challenge");
                 }
+                ServerMessage::TeamChallenge { available } => {
+                    set_teams_select(
+                        available
+                            .into_iter()
+                            .map(|(name, id)| TeamDescriptor { name, id })
+                            .collect(),
+                    );
+                    screen("team-challenge");
+                }
                 ServerMessage::GameState {
                     stage,
                     stage_duration,
@@ -993,5 +1020,12 @@ impl State {
 
     pub fn on_password_submit(&self, password: String) {
         send(ClientMessage::TryPassword { password });
+    }
+
+    pub fn on_team_submit(&self, password: String, team_number: u8) {
+        send(ClientMessage::TryTeam {
+            team_number,
+            password,
+        });
     }
 }

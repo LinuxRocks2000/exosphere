@@ -26,8 +26,6 @@ pub struct GameState {
     pub strategy: bool,
     pub tick: u16,
     pub time_in_stage: u16,
-    pub currently_attached_players: u16, // the number of players CONNECTED
-    pub currently_playing: u16,          // the number of players with territory
 }
 
 impl GameState {

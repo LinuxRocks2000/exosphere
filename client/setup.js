@@ -57,6 +57,12 @@ function setup(state) {
       document.getElementById("password").innerText,
     );
   };
+  document.getElementById("team-submit").onclick = () => {
+    window.exosphere.state.on_team_submit(
+      document.getElementById("team-password").innerText,
+      document.getElementById("team-chooser").value,
+    );
+  };
   document.getElementById("play").onclick = () => {
     let websocket = new WebSocket(document.getElementById("server").innerText);
     websocket.onopen = () => {

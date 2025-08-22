@@ -21,13 +21,14 @@ pub fn client_place(
     mut events: EventReader<ClientPlaceEvent>,
     mut commands: Commands,
     place: EventWriter<PlaceEvent>,
-    mut state: ResMut<GameState>,
+    state: Res<GameState>,
     castle_placed: Query<&ClientHasPlacedCastle>,
     config: Res<Config>,
     mut client_collect: EventWriter<ClientCollectEvent>,
     territory: Query<(&Transform, &Territory)>,
     meta: Query<(&Client, &ClientAffiliation)>,
     money: Query<&ClientMoney>,
+    mut client_kill: EventWriter<ClientKilledEvent>,
 ) {
     let mut place = Placer(place);
     // do a ton of validation on a place event
@@ -53,7 +54,6 @@ pub fn client_place(
                             }
                         }
                         if is_okay {
-                            state.currently_playing += 1;
                             commands.entity(*client).insert(ClientHasPlacedCastle);
                             commands.entity(*client).insert(ClientPlaying);
                             client_collect.write(ClientCollectEvent {
@@ -79,10 +79,9 @@ pub fn client_place(
                     }
                 }
             }
-        }
-        if kill {
-            commands.entity(*client).despawn();
-            // TODO: remove records from the ClientMap; currently we're leaking memory
+            if kill {
+                client_kill.write(ClientKilledEvent { client: *id });
+            }
         }
     }
 }

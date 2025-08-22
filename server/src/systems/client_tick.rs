@@ -27,6 +27,7 @@ pub fn client_tick(
     mut client_password_event: EventWriter<ClientTriedPasswordEvent>,
     mut strategy_path_modified_event: EventWriter<StrategyPathModifiedEvent>,
     mut client_special_event: EventWriter<ClientSpecialObjectEvent>,
+    mut client_tried_team_connect_event: EventWriter<ClientTriedTeamConnectEvent>,
 ) {
     // manage events from network-connected clients. this is just a dispatch controller; it aims to be light so the next steps can be massively
     // parallellized.
@@ -39,7 +40,6 @@ pub fn client_tick(
                     clients.insert(id, thing.id());
                 }
                 Comms::ClientDisconnect(id) => {
-                    clients.remove(&id);
                     client_killed_event.write(ClientKilledEvent { client: id });
                 }
                 Comms::MessageFrom(id, msg) => {
@@ -52,21 +52,28 @@ pub fn client_tick(
                             }
                             ClientMessage::TryPassword { password } => {
                                 client_password_event
-                                    .write(ClientTriedPasswordEvent(clients[&id], password));
+                                    .write(ClientTriedPasswordEvent(client, password));
+                            }
+                            ClientMessage::TryTeam {
+                                team_number,
+                                password,
+                            } => {
+                                client_tried_team_connect_event.write(ClientTriedTeamConnectEvent(
+                                    client,
+                                    team_number,
+                                    password,
+                                ));
                             }
                             ClientMessage::PlacePiece { x, y, tp } => {
                                 client_placed_event.write(ClientPlaceEvent { x, y, tp, client });
                             }
                             ClientMessage::Strategy { evt } => {
                                 strategy_path_modified_event
-                                    .write(StrategyPathModifiedEvent(clients[&id], evt));
+                                    .write(StrategyPathModifiedEvent(client, evt));
                             }
                             ClientMessage::Special { id: piece_id, evt } => {
-                                client_special_event.write(ClientSpecialObjectEvent(
-                                    clients[&id],
-                                    piece_id,
-                                    evt,
-                                ));
+                                client_special_event
+                                    .write(ClientSpecialObjectEvent(client, piece_id, evt));
                             }
                             _ => {
                                 println!(

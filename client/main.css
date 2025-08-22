@@ -46,7 +46,8 @@ body > * {
 }
 
 #loginmenu,
-#password-challenge {
+#password-challenge,
+#team-challenge {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -165,7 +166,8 @@ h1 {
     font-weight: bold;
 }
 
-#password-challenge {
+#password-challenge,
+#team-challenge {
     background-color: black;
     color: white;
 }
