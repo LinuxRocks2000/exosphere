@@ -91,7 +91,7 @@ pub struct Config {
     pub teams: Option<Vec<TeamDescriptor>>,
 }
 
-pub fn read_config() -> Option<Config> {
+pub fn read_config() -> Option<(Config, String)> {
     let args = std::env::args().collect::<Vec<String>>();
     let file_name = if let Some(f) = args.get(1) {
         f
@@ -99,17 +99,17 @@ pub fn read_config() -> Option<Config> {
         "config.json"
     };
     let file = std::fs::File::open(file_name).ok()?;
-    serde_json::from_reader(file).ok()
+    Some((serde_json::from_reader(file).ok()?, file_name.to_string()))
 }
 
-pub fn read_config_or_default() -> Config {
-    if let Some(config) = read_config() {
-        config
+pub fn read_config_or_default() -> (Config, Option<String>) {
+    if let Some((config, name)) = read_config() {
+        (config, Some(name))
     } else {
         println!(
             "WARNING: no config file specified or config file couldn't be opened; using defaults!"
         );
-        Config::default()
+        (Config::default(), None)
     }
 }
 

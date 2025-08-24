@@ -24,6 +24,9 @@ pub fn frame_broadcast(
     config: Res<Config>,
 ) {
     let currently_playing = current_players.iter().len();
+    if currently_playing <= config.counts.min_players as usize {
+        state.playing = false;
+    }
     if state.playing {
         state.tick += 1;
         if state.tick > state.time_in_stage {

@@ -55,3 +55,6 @@ pub struct Sender(pub crossbeam::channel::Sender<ServerMessage>);
 pub struct OneShots {
     pub board_setup: Option<SystemId>,
 }
+
+#[derive(Resource)]
+pub struct ConfigFileName(pub Option<String>);

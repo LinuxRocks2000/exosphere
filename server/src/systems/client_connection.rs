@@ -26,10 +26,13 @@ pub fn client_connection(
 ) {
     for ClientConnectEvent(client, nickname) in events.read() {
         let id = cl.get(*client).unwrap().id;
-        commands.entity(*client).insert(ClientMeta {
-            id,
-            nickname: nickname.clone(),
-        });
+        commands.entity(*client).insert((
+            ClientMeta {
+                id,
+                nickname: nickname.clone(),
+            },
+            ClientMoney { money: 0 },
+        ));
         if let Some(teams) = &config.teams {
             channels
                 .get(*client)

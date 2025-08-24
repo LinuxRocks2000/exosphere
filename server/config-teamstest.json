@@ -28,7 +28,7 @@
     "things": []
   },
   "client_setup": {
-    "money": 100000,
+    "money": 100,
     "area": [
       {
         "tp": "castle",

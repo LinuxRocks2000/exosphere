@@ -66,9 +66,11 @@ pub mod config;
 pub mod websocket;
 
 pub mod client_components;
-use client_components::*;
 
 pub mod client_events;
+
+#[cfg(feature = "admin_panel")]
+pub mod adminpanel;
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PhysicsSchedule;
@@ -148,7 +150,6 @@ fn main() {
                 },
                 |id, server, clients| {
                     clients.insert(id, ClientProperties { has_tested: false });
-                    println!("new client {:?}", id);
                     server.send_to(
                         id,
                         ServerMessage::Test(
@@ -210,7 +211,7 @@ fn main() {
         }
     });
 
-    let conf = config::read_config_or_default();
+    let (conf, config_file_name) = config::read_config_or_default();
 
     App::new()
         .add_plugins(PhysicsPlugins::default())
@@ -264,6 +265,7 @@ fn main() {
             time_in_stage: 0,
         })
         .insert_resource(conf)
+        .insert_resource(ConfigFileName(config_file_name))
         .add_systems(PreUpdate, (run_play_schedule,))
         .add_systems(
             Update,
@@ -277,6 +279,7 @@ fn main() {
                 special_handler,
                 strategy_path_handler,
                 client_win_checks,
+                client_money,
             )
                 .before(client_tick),
         )
@@ -284,6 +287,8 @@ fn main() {
             Update,
             (
                 client_tick,
+                #[cfg(feature = "admin_panel")]
+                adminpanel::update_admin_panel,
                 send_objects,
                 position_updates,
                 frame_broadcast.before(position_updates),
@@ -303,6 +308,9 @@ fn main() {
         .set_runner(|mut app| loop {
             let start = std::time::Instant::now();
             app.update();
+            if let Some(exit) = app.should_exit() {
+                return exit;
+            }
             let time_elapsed = start.elapsed();
             if time_elapsed < FRAME_TIME {
                 let time_remaining = FRAME_TIME - time_elapsed;
