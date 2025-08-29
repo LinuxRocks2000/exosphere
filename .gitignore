@@ -5,3 +5,5 @@ client/pkg/
 server/Cargo.lock
 client/Cargo.lock
 common/Cargo.lock
+server/flamegraph.svg
+server/perf.data
