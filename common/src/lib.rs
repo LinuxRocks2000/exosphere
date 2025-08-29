@@ -11,7 +11,7 @@
 */
 
 pub mod comms;
-pub const VERSION: u8 = 1; // bump this up every time a major change is made (overflow at 256; this is not meant to be an authoritative correct version)
+pub const VERSION: u8 = 2; // bump this up every time a major change is made (overflow at 256; this is not meant to be an authoritative correct version)
 pub mod fab;
 pub mod pathfollower;
 mod steal_mut;
