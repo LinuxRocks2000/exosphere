@@ -149,6 +149,8 @@ pub enum ServerMessage {
     YouLose,
     /// Somebody won! Sends id 0 (SYSTEM) for a tie.
     Winner { id: PlayerId },
+    /// A team specifically won, this is their slot
+    TeamWin { id: u8 },
     /// Establish a territory influence around an object.
     Territory { id: PieceId, radius: f32 },
     /// Establish a fabber influence around an object.

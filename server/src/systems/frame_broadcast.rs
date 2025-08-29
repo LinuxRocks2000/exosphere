@@ -20,11 +20,29 @@ use common::comms::ServerMessage;
 pub fn frame_broadcast(
     broadcast: ResMut<Sender>,
     mut state: ResMut<GameState>,
-    current_players: Query<&ClientPlaying>,
+    current_players: Query<&ClientAffiliation, With<ClientPlaying>>,
     config: Res<Config>,
 ) {
-    let currently_playing = current_players.iter().len();
-    if currently_playing <= config.counts.min_players as usize {
+    let mut last_slot = None;
+    let mut is_team_variety = false; // if there are ANY free agents, or MORE THAN 1 teams have living members, this should be true.
+    let mut currently_playing = 0; // the number of total players playing
+    for affiliation in current_players.iter() {
+        currently_playing += 1;
+        if let Some(s) = last_slot {
+            if s != affiliation.slot {
+                is_team_variety = true;
+            }
+        }
+        if affiliation.slot == 1 {
+            is_team_variety = true;
+        } else if affiliation.slot > 1 {
+            last_slot = Some(affiliation.slot);
+        }
+    }
+    if currently_playing < config.counts.min_players as usize {
+        state.playing = false;
+    }
+    if !is_team_variety {
         state.playing = false;
     }
     if state.playing {
@@ -39,7 +57,7 @@ pub fn frame_broadcast(
             state.tick = 0;
         }
     } else {
-        if currently_playing >= config.counts.min_players as usize {
+        if currently_playing >= config.counts.min_players as usize && is_team_variety {
             state.tick += 1;
         } else {
             state.tick = 0;

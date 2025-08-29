@@ -10,7 +10,7 @@
     You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
-// checks on the health of every client and broadcasts win/lose conditions if necessary
+// checks on the health of every client and broadcasts lose conditions if necessary
 
 use crate::components::*;
 use crate::events::*;
@@ -27,12 +27,10 @@ pub fn client_health_check(
     channels: Query<&ClientChannel>,
     mut lose_event: EventWriter<ClientLostEvent>,
 ) {
-    // TODO: split into more than one system? simplify? restructure?
     // checks:
     // * if the client is still present (if the client disconnected, it's dead by default!), exit early
     // * if the client has any remaining Territory, it's not dead, false alarm
     // if we determined that the client is in fact dead, send a Lose message and update the state accordingly.
-    // At the end, if there is 1 or 0 players left, send a Win broadcast as appropriate and reset the state for the next game.
     for ev in events.read() {
         if let Some(client) = clients.get(&ev.client) {
             let client = *client;

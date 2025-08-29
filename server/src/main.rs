@@ -12,6 +12,8 @@
 
 // TODO: fix the ghost bug (under some circumstances, cleanup doesn't seem to correctly delete some pieces, leaving "ghosts" that persist until server reset)
 
+// TDOO, TOOD: you mistyped
+
 // note:
 /*
     user ids are u64s.
