@@ -7,72 +7,54 @@
 
     Exosphere is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
+    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
-use bevy::prelude::{
-    Resource,
-    Deref,
-    DerefMut
-};
-use std::collections::HashMap;
-use tokio::sync::{mpsc, broadcast};
 use crate::comms::*;
-use crate::Client;
+pub use crate::config::Config;
 use crate::Comms;
+use bevy::ecs::system::SystemId;
+use bevy::prelude::*;
 use common::comms::Stage;
 use common::PlayerId;
-
-
-// todo: break up GameConfig and GameState into smaller structs for better parallelism
-#[derive(Resource)]
-pub struct GameConfig {
-    pub width : f32,
-    pub height : f32,
-    pub wait_period : u16, // time it waits before the game starts
-    pub play_period : u16, // length of a play period
-    pub strategy_period : u16, // length of a strategy period
-    pub max_player_slots : u16,
-    pub min_player_slots : u16
-}
-
+use std::collections::HashMap;
 
 #[derive(Resource)]
 pub struct GameState {
-    pub playing : bool,
-    pub io : bool,
-    pub strategy : bool,
-    pub tick : u16,
-    pub time_in_stage : u16,
-    pub currently_attached_players : u16, // the number of players CONNECTED
-    pub currently_playing : u16 // the number of players with territory
+    pub playing: bool,
+    pub io: bool,
+    pub strategy: bool,
+    pub tick: u16,
+    pub time_in_stage: u16,
 }
-
 
 impl GameState {
     pub fn get_state_enum(&self) -> Stage {
         if self.playing {
             if self.strategy {
                 Stage::MoveShips
-            }
-            else {
+            } else {
                 Stage::Playing
             }
-        }
-        else {
+        } else {
             Stage::Waiting
         }
     }
 }
 
-
 #[derive(Resource, Deref, DerefMut)]
-pub struct ClientMap(pub HashMap<PlayerId, Client>);
-
+pub struct ClientMap(pub HashMap<PlayerId, Entity>);
 
 #[derive(Resource, Deref, DerefMut)] // todo: better names (or generic type arguments)
-pub struct Receiver(pub mpsc::Receiver<Comms>);
-
+pub struct Receiver(pub crossbeam::channel::Receiver<Comms>);
 
 #[derive(Resource, Deref, DerefMut)]
-pub struct Sender(pub broadcast::Sender<ServerMessage>);
+pub struct Sender(pub crossbeam::channel::Sender<ServerMessage>);
+
+#[derive(Resource, Default)]
+pub struct OneShots {
+    pub board_setup: Option<SystemId>,
+}
+
+#[derive(Resource)]
+pub struct ConfigFileName(pub Option<String>);

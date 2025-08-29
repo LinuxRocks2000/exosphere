@@ -7,7 +7,7 @@
 
     Exosphere is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
+    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 */
 
 body > * {
@@ -36,15 +36,39 @@ body > * {
 }
 
 #loginmenu {
-    padding: 50px;
-    border-radius: 50px;
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: inline-block;
+    top: 0px;
+    left: 0px;
     color: white;
-    background-color: black;
+    background-image:
+        linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
+        url("res/play-screenshot-1.png");
+}
+
+#loginmenu,
+#password-challenge,
+#team-challenge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+#loginmenu > * {
+    margin-top: 10px;
+}
+
+.input {
+    min-width: 20ch;
+    display: inline-block;
+    background-color: transparent;
+    border: none;
+    color: white;
+    border-bottom: 2px solid red;
+}
+
+h1 {
+    font-size: 4em;
 }
 
 #waitscreen {
@@ -76,7 +100,8 @@ body > * {
     box-sizing: border-box;
 }
 
-#buyshipmenu > div:hover, #buyshipmenu > div:has(div > input:checked) {
+#buyshipmenu > div:hover,
+#buyshipmenu > div:has(div > input:checked) {
     max-width: 50vw;
 }
 
@@ -141,3 +166,8 @@ body > * {
     font-weight: bold;
 }
 
+#password-challenge,
+#team-challenge {
+    background-color: black;
+    color: white;
+}

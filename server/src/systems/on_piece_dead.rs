@@ -1,0 +1,73 @@
+/*
+    Copyright 2024 Tyler Clarke.
+
+    This file is part of Exosphere.
+
+    Exosphere is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+    Exosphere is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+// when pieces die, handle the effects!
+
+use crate::components::*;
+use crate::events::*;
+use crate::resources::*;
+use crate::Bullets;
+use crate::PieceType;
+use bevy::prelude::*;
+use common::comms::ServerMessage;
+
+pub fn on_piece_dead(
+    mut commands: Commands,
+    broadcast: ResMut<Sender>,
+    pieces: Query<&GamePiece>,
+    sensored: Query<&Sensored>,
+    bullets: Query<(&Bullet, &Transform)>,
+    chests: Query<&Chest>,
+    mut events: EventReader<PieceDestroyedEvent>,
+    mut explosions: EventWriter<ExplosionEvent>,
+    mut client_kill: EventWriter<ClientKilledEvent>,
+    clients: Res<ClientMap>,
+    mut client_collect: EventWriter<ClientCollectEvent>,
+) {
+    for evt in events.read() {
+        if let Ok(piece) = pieces.get(evt.piece) {
+            if let Ok((bullet, pos)) = bullets.get(evt.piece) {
+                if let Bullets::Bomb(explosion, _) = bullet.tp {
+                    explosions.write(ExplosionEvent {
+                        x: pos.translation.x,
+                        y: pos.translation.y,
+                        props: explosion,
+                    });
+                }
+            }
+            if let Ok(_) = chests.get(evt.piece) {
+                if let Some(cl) = clients.get(&evt.responsible) {
+                    client_collect.write(ClientCollectEvent {
+                        client: *cl,
+                        amount: 20,
+                    }); // kill the chest, collect some dough, that's life, yo!
+                } // [2025-8-20] sometimes I go back and read old comments and then I feel sad
+            }
+            if piece.tp == PieceType::Castle {
+                client_kill.write(ClientKilledEvent {
+                    client: piece.owner,
+                });
+            }
+            commands.entity(evt.piece).despawn();
+            if let Ok(s) = sensored.get(evt.piece) {
+                commands.entity(s.sensor).despawn(); // despawn attached sensors
+            }
+            if let Err(_) = broadcast.send(ServerMessage::DeleteObject {
+                id: evt.piece.into(),
+            }) {
+                println!(
+                    "game engine lost connection to webserver. this is probably not critical."
+                );
+            }
+        }
+    }
+}

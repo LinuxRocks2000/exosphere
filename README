@@ -3,6 +3,8 @@
 Exosphere is the third member of Tyler Clarke's Strategy Game franchise. It is a direct successor to MMOSG v2, but with more realistic physics and smoother gameplay.
 Unlike MMOSG v2, which is written with a custom websocket server, game engine, and physics engine, Exosphere uses the open source Bevy, Warp, and Rapier libraries.
 
+update 2025-8-14: exosphere no longer uses warp or rapier; I've replaced warp with custom network and rapier with avian2d
+
 Exosphere is free software under GNU GPLv3.
 
 HOW TO RUN:

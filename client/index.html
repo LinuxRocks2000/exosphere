@@ -9,7 +9,7 @@
 
     Exosphere is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>. 
+    You should have received a copy of the GNU General Public License along with Exosphere. If not, see <https://www.gnu.org/licenses/>.
 -->
 
 <html>
@@ -21,14 +21,24 @@
     <body>
         <canvas id="grid-overlay"></canvas>
         <canvas id="game"></canvas>
-        <!-- todo: screenshots of exosphere games in the background for #prettiness -->
         <div id="loginmenu">
-            <!-- todo: logo (not this nasty text) -->
-            <!-- todo: general niceification -->
             <h1>Exosphere</h1>
-            <b>Server: </b><input type="text" id="server" oninput="saveinputstate(this);"><br>
-            <b>Nickname: </b><input type="text" id="nickname" oninput="saveinputstate(this);"><br>
+            <p><b>Server: </b><span contenteditable class="input" id="server" oninput="saveinputstate(this);"></p>
+            <p><b>Nickname: </b><span contenteditable class="input" id="nickname" oninput="saveinputstate(this);"></p>
             <button id="play">Play</button>
+        </div>
+        <div id="password-challenge" style="display: none">
+            <h1>Password Required</h1>
+            <p><b>Password: </b><span contenteditable class="input" id="password"></span></p>
+            <button id="password-submit">Play</button>
+        </div>
+        <div id="team-challenge" style="display: none">
+            <h1>Please Join A Team</h1>
+            <select id="team-chooser">
+                <option>red</option>
+            </select>
+            <p><b>Password: </b><span contenteditable class="input" id="team-password"></span></p>
+            <button id="team-submit">Play</button>
         </div>
         <div id="gameui" style="display: none">
             <div id="readouts">
@@ -59,7 +69,7 @@
             Loading. Please wait. If this takes more than a few seconds, your connection is probably zonked.
         </div>
         <div id="res">
-            
+
         </div>
         <script type="shader/fragment" id="fragment-shader">
     precision highp float;
@@ -164,7 +174,7 @@
         <script src="gl.js?"></script>
         <script src="setup.js"></script>
         <!--<script src="main.js"></script>-->
-        <script type="module">       
+        <script type="module">
             import init, { State } from "./pkg/client.js";
             init().then(() => {
                 setup(new State());
@@ -173,12 +183,12 @@
         <script>
 
 function saveinputstate(el) {
-    localStorage["inputstate_" + el.id] = el.value;
+    localStorage["inputstate_" + el.id] = el.innerText;
 }
 
-for (el of document.getElementsByTagName("input")) {
+for (el of document.getElementsByClassName("input")) {
     if (localStorage["inputstate_" + el.id]) {
-        el.value = localStorage["inputstate_" + el.id];
+        el.innerText = localStorage["inputstate_" + el.id];
     }
 }
         </script>
